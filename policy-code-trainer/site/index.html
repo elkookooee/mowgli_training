@@ -1,0 +1,861 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{color-scheme:light}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Policy Code Trainer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: sticky mode tabs; lesson track = section rail + reading column; flashcards = centered deck */
+:root{
+  --bg:#f3f5f7; --surface:#ffffff; --ink:#15202b; --muted:#56657a; --line:#d8dee6;
+  --accent:#1f5fbf; --accent-soft:#e3ecfa; --code-bg:#0f1b2a; --code-fg:#dbe6f3;
+  --kw:#7fb4ff; --str:#f2c879; --cm:#7c8ea5; --ty:#9ee0c4;
+  --good:#1d7a4f; --good-soft:#e1f3ea; --bad:#b33a2e; --bad-soft:#f8e4e1; --warn:#9a6a00; --warn-soft:#fbf0d6;
+  --f-display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body:"Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0d141c; --surface:#151f2b; --ink:#e6edf5; --muted:#9aaabd; --line:#273445;
+  --accent:#6ea3ff; --accent-soft:#1a2b45; --code-bg:#08101a; --code-fg:#dbe6f3;
+  --good:#5cc995; --good-soft:#123326; --bad:#ff8a7d; --bad-soft:#3a1915; --warn:#f0c15a; --warn-soft:#352a0c;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0d141c; --surface:#151f2b; --ink:#e6edf5; --muted:#9aaabd; --line:#273445;
+  --accent:#6ea3ff; --accent-soft:#1a2b45; --code-bg:#08101a; --code-fg:#dbe6f3;
+  --good:#5cc995; --good-soft:#123326; --bad:#ff8a7d; --bad-soft:#3a1915; --warn:#f0c15a; --warn-soft:#352a0c;
+  color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:17px;line-height:1.55}
+.wrap{max-width:1120px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 60px}
+header.top{display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:12px 24px;padding-block:8px 16px}
+h1{font-family:var(--f-display);font-weight:700;font-size:clamp(28px,4vw,40px);line-height:1.1;margin:0;text-wrap:balance}
+.sub{color:var(--muted);margin:4px 0 0;max-width:60ch}
+.tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);display:flex;gap:6px;padding-block:10px;border-bottom:1px solid var(--line);margin-bottom:24px}
+.tabs button{font:600 15px var(--f-body);border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:8px 16px;border-radius:999px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+:root[data-theme="dark"] .tabs button[aria-selected="true"]{color:#08101a}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tabs button[aria-selected="true"]{color:#08101a}}
+button:focus-visible,textarea:focus-visible,select:focus-visible,.opt:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+/* Lessons */
+.lessons{display:grid;grid-template-columns:240px minmax(0,1fr);gap:32px;align-items:start}
+nav.rail{position:sticky;top:calc(env(safe-area-inset-top,0px) + 76px);display:flex;flex-direction:column;gap:2px}
+nav.rail button{display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;font:inherit;font-size:15px;background:none;border:none;color:var(--muted);padding:7px 10px;border-radius:8px;cursor:pointer}
+nav.rail button:hover{background:var(--accent-soft);color:var(--ink)}
+nav.rail button[aria-current="true"]{background:var(--accent-soft);color:var(--ink);font-weight:600}
+.pill{font:600 11px var(--f-mono);padding:2px 7px;border-radius:999px;background:var(--line);color:var(--muted);white-space:nowrap}
+.pill.pass{background:var(--good-soft);color:var(--good)}
+.pill.part{background:var(--warn-soft);color:var(--warn)}
+article{min-width:0;max-width:72ch}
+.eyebrow{font:600 12px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+article h2{font-family:var(--f-display);font-size:30px;line-height:1.15;margin:4px 0 12px;text-wrap:balance}
+article h3{font-family:var(--f-display);font-size:20px;margin:28px 0 8px}
+article p,article li{max-width:68ch}
+article ul{padding-left:20px;display:grid;gap:4px}
+code{font-family:var(--f-mono);font-size:.86em;background:var(--accent-soft);padding:1px 5px;border-radius:4px}
+pre{background:var(--code-bg);color:var(--code-fg);font:14px/1.6 var(--f-mono);padding:16px 18px;border-radius:10px;overflow-x:auto;margin:12px 0}
+pre code{background:none;padding:0;font-size:inherit;color:inherit}
+.k{color:var(--kw);font-weight:600}.s{color:var(--str)}.c{color:var(--cm);font-style:italic}.t{color:var(--ty)}
+.note{border-left:3px solid var(--warn);background:var(--warn-soft);padding:10px 14px;border-radius:0 8px 8px 0;margin:14px 0}
+.note b{color:var(--warn)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-top:28px}
+.panel h3{margin-top:0}
+textarea{width:100%;min-height:150px;font:14px/1.5 var(--f-mono);background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px;resize:vertical}
+.btn{font:600 15px var(--f-body);border:1px solid var(--accent);background:var(--accent);color:#fff;padding:8px 16px;border-radius:8px;cursor:pointer}
+:root[data-theme="dark"] .btn{color:#08101a}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .btn{color:#08101a}}
+.btn.ghost{background:transparent;color:var(--accent)}
+.btn:disabled{opacity:.45;cursor:default}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+.q{border-top:1px solid var(--line);padding-top:16px;margin-top:16px}
+.q:first-of-type{border-top:none;margin-top:0;padding-top:0}
+.q p{margin:0 0 8px;font-weight:600}
+.opts{display:grid;gap:6px}
+.opt{display:block;width:100%;text-align:left;font:inherit;font-size:16px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 12px;cursor:pointer}
+.opt:hover:not(:disabled){border-color:var(--accent)}
+.opt.right{background:var(--good-soft);border-color:var(--good)}
+.opt.wrong{background:var(--bad-soft);border-color:var(--bad)}
+.opt:disabled{cursor:default}
+.explain{font-size:15px;color:var(--muted);margin-top:6px}
+.score{font:600 15px var(--f-mono)}
+.pager{display:flex;justify-content:space-between;gap:12px;margin-top:32px;flex-wrap:wrap}
+.tbl{overflow-x:auto;margin:10px 0 14px}
+.tbl table{border-collapse:collapse;font-size:15px;min-width:100%}
+.tbl th,.tbl td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl th{font:600 12px var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tbl td code{white-space:nowrap}
+.howto{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:16px 0}
+.howto div{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.howto b{display:block;font-family:var(--f-display);font-size:16px;margin-bottom:2px}
+.howto span{font-size:15px;color:var(--muted)}
+
+/* Flashcards */
+.deck{max-width:680px;margin:0 auto;display:grid;gap:16px}
+.deckbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+select{font:inherit;font-size:15px;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.boxes{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.boxes div{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px;text-align:center}
+.boxes b{display:block;font:700 20px var(--f-mono);font-variant-numeric:tabular-nums}
+.boxes span{font-size:12px;color:var(--muted)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;min-height:260px;padding:24px;display:flex;flex-direction:column;gap:14px;cursor:pointer;box-shadow:0 6px 24px -12px rgba(15,27,42,.35)}
+.card .meta{display:flex;justify-content:space-between;gap:8px;font:600 12px var(--f-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.card .front{font-family:var(--f-display);font-size:22px;line-height:1.3;text-wrap:balance}
+.card .back{border-top:1px dashed var(--line);padding-top:14px;min-width:0}
+.card .back pre{margin:8px 0 0;font-size:13px}
+.card .hint{margin-top:auto;font-size:14px;color:var(--muted)}
+.grade{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.grade button{font:600 15px var(--f-body);padding:10px;border-radius:8px;cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.grade .again{border-color:var(--bad);color:var(--bad)}
+.grade .good{border-color:var(--accent);color:var(--accent)}
+.grade .easy{border-color:var(--good);color:var(--good)}
+.done{text-align:center;padding:40px 20px;background:var(--surface);border:1px dashed var(--line);border-radius:14px}
+.small{font-size:14px;color:var(--muted)}
+@media (max-width:820px){
+  .lessons{grid-template-columns:minmax(0,1fr)}
+  nav.rail{position:static;flex-direction:row;overflow-x:auto;padding-bottom:6px}
+  nav.rail button{white-space:nowrap}
+  nav.rail .pill{display:none}
+}
+@media (prefers-reduced-motion:no-preference){.card{transition:transform .15s}.card:active{transform:scale(.99)}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Policy Code Trainer</h1>
+      <p class="sub">Skyhigh Policy Code (MOWGLI) for Cloud SWG. Read a section, write the exercise from memory, pass the check, then keep it fresh with the flashcards.</p>
+    </div>
+    <span class="small">Based on Skyhigh docs published Aug 21, 2026</span>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tab-lessons" aria-selected="true" data-view="lessons">Lessons</button>
+    <button role="tab" id="tab-cards" aria-selected="false" data-view="cards">Flashcards</button>
+  </div>
+
+  <section id="view-lessons" class="lessons">
+    <nav class="rail" id="rail" aria-label="Sections"></nav>
+    <article id="lesson"></article>
+  </section>
+
+  <section id="view-cards" hidden>
+    <div class="deck">
+      <div class="deckbar">
+        <div class="row" style="margin:0">
+          <label for="deckFilter" class="small">Section</label>
+          <select id="deckFilter"></select>
+          <select id="deckMode" aria-label="Mode">
+            <option value="due">Due today</option>
+            <option value="all">All cards</option>
+          </select>
+        </div>
+        <button class="btn ghost" id="resetCards">Reset progress</button>
+      </div>
+      <div class="boxes" id="boxes"></div>
+      <div id="cardArea"></div>
+      <p class="small">Tap the card to flip. <b>Again</b> brings it back this session. <b>Good</b> moves it up one box. <b>Easy</b> jumps two. Box 1 is daily, box 5 is every two weeks. Progress is saved in this browser only.</p>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+const KW="ROUTINE|ON|ANY|IF|THEN|ELSE|AND|OR|NOT|TRUE|FALSE|END|EXIT|CALL|INCLUDE|LOOP|FOR|IN|DO|BREAK|CONTINUE|SORTED";
+const TY="STRING|NUMBER|BOOLEAN|VECTOR|MAP";
+const TOK=new RegExp('(\\/\\/[^\\n]*)|("(?:\\\\.|[^"\\\\])*")|\\b('+KW+')\\b|\\b('+TY+')\\b','g');
+function esc(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+function hl(src){let out="",last=0;for(const m of src.matchAll(TOK)){out+=esc(src.slice(last,m.index));
+  const cls=m[1]?"c":m[2]?"s":m[3]?"k":"t";out+='<span class="'+cls+'">'+esc(m[0])+'</span>';last=m.index+m[0].length}
+  return out+esc(src.slice(last))}
+function code(src){return '<pre><code>'+hl(src.trim())+'</code></pre>'}
+function store(k,v){try{if(v===undefined){const r=localStorage.getItem(k);return r?JSON.parse(r):null}localStorage.setItem(k,JSON.stringify(v))}catch(e){return null}}
+
+/* ---------- LESSON CONTENT ---------- */
+const S=[
+{id:"start",title:"How to study this",body:`
+<p>Reading code feels like learning, but most of it is gone in a day. What makes it stick is <b>pulling it back out of your head</b>, a little at a time, spread over days. This page is built around that.</p>
+<div class="howto">
+<div><b>Recall, don't reread</b><span>Each section ends with an exercise. Close the lesson text and type the code from memory before you peek.</span></div>
+<div><b>Space it out</b><span>Do the flashcards' "Due today" pile daily. 10 minutes beats one 2-hour cram.</span></div>
+<div><b>Small and often</b><span>One section per sitting. Stop when you pass the check.</span></div>
+<div><b>Use the real thing</b><span>After each section, open a working routine in your tenant and find the pattern you just learned.</span></div>
+<div><b>Explain it out loud</b><span>If you can explain a routine to an AE in plain words, you know it.</span></div>
+<div><b>Keep an error log</b><span>Every time the console rejects your code, write the fix down. Those become your best flashcards.</span></div>
+</div>
+<h3>Suggested plan</h3>
+<ul>
+<li><b>Week 1:</b> Sections 1 to 4 (the language itself). Flashcards daily.</li>
+<li><b>Week 2:</b> Sections 5 to 7 (triggers, URLs and lists, actions). Rewrite one existing rule in code.</li>
+<li><b>Week 3:</b> Sections 8 and 9 (DLP, RBI, your tenant's gotchas). Build one small routine end to end.</li>
+</ul>
+<p class="small">Source docs: <a href="https://success.skyhighsecurity.com/docs/skyhigh-policy-code-essentials" target="_blank" rel="noopener">Essentials</a> · <a href="https://success.skyhighsecurity.com/docs/policy-code-triggers-r2" target="_blank" rel="noopener">Triggers</a> · <a href="https://success.skyhighsecurity.com/docs/clone-function-references-v2" target="_blank" rel="noopener">Functions</a> · <a href="https://success.skyhighsecurity.com/docs/procedures-reference" target="_blank" rel="noopener">Procedures</a> · <a href="https://success.skyhighsecurity.com/Skyhigh_Policy_Code/Skyhigh_Policy_Code_-_Reference_Materials" target="_blank" rel="noopener">Reference Materials</a></p>`,
+quiz:[]},
+
+{id:"routines",title:"1. Routines and the basics",body:`
+<p>MOWGLI stands for <b>MO</b>dules <b>W</b>ith <b>G</b>luing <b>L</b>anguage <b>I</b>nterpreter. "Policy Code" means the interpreter plus Skyhigh's modules (<code>MWG</code>, <code>DLP</code>, <code>RBI</code>, <code>Net</code>, <code>JSON</code> and others).</p>
+<h3>A routine is a rule set</h3>
+<p>Everything lives inside a <b>routine</b>. You name it and say which <b>triggers</b> it runs on.</p>
+${code(`
+ROUTINE Block_Bad_Sites ON (Web.Request) {
+  // your logic goes here
+}`)}
+<ul>
+<li><code>ON (Web.Request, Web.Response)</code> runs on both.</li>
+<li><code>ON ANY</code> runs on every trigger.</li>
+<li><code>ON ()</code> never runs on its own. It only runs when another routine <code>CALL</code>s it.</li>
+<li>Names: letters, numbers, underscores. Must start with a letter.</li>
+</ul>
+<h3>Functions vs procedures</h3>
+<p>A <b>function</b> gives you a value back (<code>MWG.Url.Host</code> returns a STRING). A <b>procedure</b> does something and returns nothing (<code>MWG.Block("reason")</code>). Memory hook: <i>functions answer, procedures act</i>.</p>
+<h3>The syntax rules that bite</h3>
+<ul>
+<li>Keywords are UPPERCASE: <code>IF THEN ELSE AND OR NOT TRUE FALSE</code>.</li>
+<li>Strings use <b>double quotes only</b>. Single quotes are a syntax error.</li>
+<li>Comments are <code>//</code> only. There are no <code>/* */</code> block comments.</li>
+<li><code>+</code> joins strings: <code>"user: " + MWG.Username</code>.</li>
+<li>Braces are optional when a block is one statement, but always using them is safer.</li>
+</ul>`,
+ex:{prompt:"From memory: write an empty routine named Tag_Uploads that runs on both Web.Request and Web.Response, with a comment inside.",answer:`
+ROUTINE Tag_Uploads ON (Web.Request, Web.Response) {
+  // tag uploads here
+}`},
+quiz:[
+{q:"Which line is valid?",o:["MWG.Block('Not allowed')","MWG.Block(\"Not allowed\")","mwg.block(\"Not allowed\")","MWG.Block(Not allowed)"],a:1,e:"Strings need double quotes. Single quotes are invalid."},
+{q:"A routine declared ON () will…",o:["Run on every trigger","Never run","Only run when another routine CALLs it","Run once at policy load"],a:2,e:"ON () is the call-only pattern."},
+{q:"MWG.Block is a…",o:["Function: it returns a value","Procedure: it acts and returns nothing","Trigger","Module"],a:1,e:"Procedures act, functions answer."},
+{q:"How do you write a comment?",o:["# comment","/* comment */","// comment","-- comment"],a:2,e:"Only // line comments exist."}]},
+
+{id:"types",title:"2. Data types and variables",body:`
+<p>A variable is a labeled box that holds one value. In Policy Code every box has a fixed <b>type</b>, and the type decides what kind of value can go in it.</p>
+
+<h3>The types at a glance</h3>
+<p>Policy Code has <b>three simple types</b>, which hold one value each:</p>
+<div class="tbl"><table>
+<tr><th>Type</th><th>Holds</th><th>Example values</th><th>Use it for</th></tr>
+<tr><td><code>BOOLEAN</code></td><td>yes or no</td><td><code>TRUE</code>, <code>FALSE</code></td><td>conditions: is it an upload? is the user signed in?</td></tr>
+<tr><td><code>NUMBER</code></td><td>any number, whole or decimal</td><td><code>50</code>, <code>2.5</code>, <code>-127</code></td><td>sizes in bytes, risk scores, counts, hours</td></tr>
+<tr><td><code>STRING</code></td><td>text, in double quotes</td><td><code>"box.com"</code>, <code>"Finance"</code></td><td>host names, usernames, headers, block messages</td></tr>
+</table></div>
+<p>And <b>two collection types</b>, which hold many values of one simple type:</p>
+<div class="tbl"><table>
+<tr><th>Type</th><th>Holds</th><th>Example</th><th>Use it for</th></tr>
+<tr><td><code>VECTOR&lt;T&gt;</code></td><td>an ordered list</td><td><code>"exe", "msi", "dmg"</code></td><td>blocked extensions, a user's groups</td></tr>
+<tr><td><code>MAP&lt;K,V&gt;</code></td><td>key → value pairs</td><td><code>("box.com", 50), ("dropbox.com", 25)</code></td><td>a per-site limit, a lookup table</td></tr>
+</table></div>
+<p>On top of these, Skyhigh's modules add <b>object types</b> such as <code>MWG.URL</code>, <code>Net.IP</code> and <code>MediaType</code>. They're covered in Piece 6.</p>
+<p>Memory hook: <b>B-N-S</b> for the simple three (<b>B</b>oolean, <b>N</b>umber, <b>S</b>tring), <b>V-M</b> for the collections (<b>V</b>ector, <b>M</b>ap).</p>
+
+<h3>Declaring and changing a variable</h3>
+<p>The pattern is always <b>type, name, equals, value</b>. After that, change it with just the name. You never repeat the type, and the type can never change.</p>
+${code(`
+NUMBER limitMB = 50          // declare: type + name + value
+limitMB = 100                // change: name only
+STRING g                     // declare now, give it a value later
+g = "Finance"`)}
+<ul>
+<li><b>Names:</b> stick to letters, numbers and underscores, starting with a letter (the same rule as routine names). <code>maxBytes</code>, <code>blocked_ext</code>.</li>
+<li><b>Declared without a value?</b> Give it one before you read it. The <code>FOR</code> loop iterator in Section 4 is the common case.</li>
+<li><b>Wrong type = error.</b> Putting <code>"50"</code> (a STRING) in a NUMBER box fails. That is the "parameter type mismatch" family of errors.</li>
+</ul>
+
+<h3>Piece 1: BOOLEAN (yes or no)</h3>
+<p>Only two values: <code>TRUE</code> and <code>FALSE</code>, always uppercase, never in quotes.</p>
+${code(`
+BOOLEAN isUpload = MWG.IsUpload            // from a function
+BOOLEAN isBig    = MWG.BodySize > 52428800  // from a comparison
+BOOLEAN risky    = isUpload AND isBig       // from AND / OR / NOT
+
+IF risky THEN {                              // no need for "== TRUE"
+  MWG.Block("Large upload")
+}`)}
+<ul>
+<li><b>Where they come from:</b> functions whose names read like questions (<code>MWG.IsAuthenticated</code>, <code>MWG.IsUpload</code>, <code>MWG.UrlHasHighRisk</code>, <code>RBI.IsInIsolation</code>), comparisons (<code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&gt;</code>), and other booleans joined with <code>AND</code>, <code>OR</code>, <code>NOT</code>.</li>
+<li><b>Why store one?</b> Naming a condition (<code>isBig</code>) makes a long IF readable, and lets you reuse the result.</li>
+</ul>
+<div class="note"><b>Mistakes:</b> <code>true</code> (lowercase) is not a keyword. <code>"TRUE"</code> in quotes is a STRING, not a BOOLEAN.</div>
+
+<h3>Piece 2: NUMBER (whole numbers and decimals)</h3>
+<p>There is one number type for both <code>50</code> and <code>2.5</code>. It stays exact up to 2<sup>52</sup> (about 4.5 quadrillion), so byte counts and timestamps are safe.</p>
+${code(`
+NUMBER limitMB  = 50
+NUMBER maxBytes = limitMB * 1024 * 1024     // 52428800
+NUMBER half     = limitMB / 2               // 25
+NUMBER whole    = Math.Div(7, 2)            // 3  (integer division)
+NUMBER left     = Math.Modulus(7, 2)        // 1  (remainder)
+NUMBER rounded  = Math.Round(2.6)           // 3`)}
+<ul>
+<li><b>Math:</b> <code>+ - * /</code>, plus <code>Math.Div</code>, <code>Math.Modulus</code>, <code>Math.Round</code>, <code>Math.Floor</code>, <code>Math.Ceil</code>, <code>Math.Min</code>, <code>Math.Max</code>, <code>Math.Abs</code>.</li>
+<li><b>Where they come from:</b> <code>MWG.BodySize</code> (bytes), <code>MWG.ApplicationRisk</code>, <code>MWG.URLReputation</code> (-127 to 127), <code>DateTime.Hour</code>, the <code>Size</code> of a list.</li>
+<li><b>Units matter:</b> sizes are in <b>bytes</b>. 50 MB is <code>50 * 1024 * 1024</code>, not <code>50</code>. To show a size to a person, <code>ToVolumeString(MWG.BodySize)</code> gives text like "1 GB".</li>
+</ul>
+<div class="note"><b>Mistake:</b> comparing a NUMBER to text. <code>MWG.BodySize &gt; "50"</code> fails. Convert text with <code>ToNumber("50")</code>.</div>
+
+<h3>Piece 3: STRING (text)</h3>
+<p>Text inside <b>double quotes</b>. Join pieces with <code>+</code>.</p>
+${code(`
+STRING host = MWG.Url.Host
+STRING msg  = "Blocked " + host + " for " + MWG.Username
+STRING size = ToString(MWG.BodySize)       // NUMBER -> STRING
+NUMBER n    = ToNumber("50")               // STRING -> NUMBER`)}
+<p><b>Special characters</b> need a backslash inside quotes:</p>
+<div class="tbl"><table>
+<tr><th>Write</th><th>You get</th></tr>
+<tr><td><code>\\"</code></td><td>a double quote</td></tr>
+<tr><td><code>\\\\</code></td><td>a backslash</td></tr>
+<tr><td><code>\\n</code></td><td>new line</td></tr>
+<tr><td><code>\\r</code></td><td>carriage return</td></tr>
+<tr><td><code>\\t</code></td><td>tab</td></tr>
+</table></div>
+<p><b>The string functions you'll use most:</b></p>
+<div class="tbl"><table>
+<tr><th>Function</th><th>Returns</th><th>Example</th></tr>
+<tr><td><code>Length(s)</code></td><td>NUMBER</td><td>number of characters</td></tr>
+<tr><td><code>IsEmpty(s)</code></td><td>BOOLEAN</td><td>is it ""?</td></tr>
+<tr><td><code>ToLower(s)</code> / <code>ToUpper(s)</code></td><td>STRING</td><td>normalize case before comparing</td></tr>
+<tr><td><code>Trim(s)</code></td><td>STRING</td><td>strip spaces at both ends</td></tr>
+<tr><td><code>FindCaseInsensitive(s, "x")</code></td><td>NUMBER</td><td>position, or <b>-1</b> if absent</td></tr>
+<tr><td><code>StartsWith</code> / <code>EndsWithCaseInsensitive</code></td><td>BOOLEAN</td><td>prefix / suffix checks</td></tr>
+<tr><td><code>EqualsCaseInsensitive(a, b)</code></td><td>BOOLEAN</td><td>compare ignoring case</td></tr>
+<tr><td><code>ReplaceAll(s, find, repl)</code></td><td>STRING</td><td>swap every match</td></tr>
+<tr><td><code>Split(s, ",")</code></td><td>VECTOR&lt;STRING&gt;</td><td>"a,b,c" into a list</td></tr>
+<tr><td><code>SubstringBetween(s, "[", "]")</code></td><td>STRING</td><td>text between two markers</td></tr>
+</table></div>
+<div class="note"><b>Mistakes:</b> single quotes (<code>'text'</code>) are a syntax error. <code>==</code> is an exact match, so <code>"Box.com" == "box.com"</code> is FALSE. Use <code>EqualsCaseInsensitive</code> or <code>ToLower</code> first. To be safe, wrap numbers in <code>ToString()</code> before joining them to text.</div>
+
+<h3>Piece 4: VECTOR (an ordered list)</h3>
+<p>A list of values that all share <b>one type</b>, written in angle brackets: <code>VECTOR&lt;STRING&gt;</code>, <code>VECTOR&lt;NUMBER&gt;</code>. Positions (indexes) start at <b>0</b>.</p>
+${code(`
+VECTOR<STRING> exts = "exe", "msi", "dmg"   // literal: comma-separated
+
+exts.Add("bat")                    // append  -> exe, msi, dmg, bat
+STRING first = exts.Get(0)         // "exe"
+STRING last  = exts.Get(exts.Size - 1)   // "bat"
+exts.Set(1, "msp")                 // replace position 1
+NUMBER where = exts.Find("dmg")    // 2   (or -1 if absent)
+IF Contains(exts, "exe") THEN { }  // simple yes/no check
+exts.Remove(0)                     // remove position 0
+exts.RemoveLast                    // remove the last item`)}
+<div class="tbl"><table>
+<tr><th>Method</th><th>Does</th></tr>
+<tr><td><code>Add(item)</code></td><td>append to the end</td></tr>
+<tr><td><code>Get(i)</code> / <code>Set(i, v)</code></td><td>read / replace the item at position i</td></tr>
+<tr><td><code>Find(item)</code></td><td>position of item, or -1</td></tr>
+<tr><td><code>Remove(i)</code> / <code>RemoveLast</code></td><td>delete by position / delete the last one</td></tr>
+<tr><td><code>Size</code> / <code>IsEmpty</code></td><td>how many / are there none</td></tr>
+<tr><td><code>SetSorted</code> / <code>IsSorted</code></td><td>sort / check sort order</td></tr>
+</table></div>
+<ul>
+<li><b>Where they come from:</b> <code>MWG.UserGroups</code>, <code>Split(...)</code>, <code>MWG.StringListByName("name")</code>, <code>MediaType.Ensured()</code>.</li>
+<li><b>Walk through one</b> with <code>FOR item IN list DO { }</code> (Section 4).</li>
+</ul>
+<div class="note"><b>Mistakes:</b> the last item is at <code>Size - 1</code>, not <code>Size</code>. You can't mix types in one list, and you can't put a VECTOR or MAP inside another.</div>
+
+<h3>Piece 5: MAP (a lookup table)</h3>
+<p>Pairs of <b>key → value</b>, like a two-column table. Keys must be <code>STRING</code> or <code>NUMBER</code>. Values can be any type except VECTOR or MAP.</p>
+${code(`
+MAP<STRING,NUMBER> limitMB = ("box.com", 50), ("dropbox.com", 25)
+
+limitMB.Set("wetransfer.com", 10)      // add a new pair
+limitMB.Set("box.com", 100)            // same key = overwrite
+IF limitMB.HasKey("box.com") THEN {
+  NUMBER mb = limitMB.Get("box.com")   // 100
+}
+limitMB.Remove("dropbox.com")
+NUMBER count = limitMB.Size            // 2`)}
+<div class="tbl"><table>
+<tr><th>Method</th><th>Does</th></tr>
+<tr><td><code>Get(key)</code></td><td>value for that key</td></tr>
+<tr><td><code>Set(key, value)</code></td><td>add, or overwrite if the key exists</td></tr>
+<tr><td><code>HasKey(key)</code></td><td>is the key there?</td></tr>
+<tr><td><code>GetKeys</code></td><td>all keys as a VECTOR</td></tr>
+<tr><td><code>Remove(key)</code></td><td>delete the pair</td></tr>
+<tr><td><code>Size</code> / <code>IsEmpty</code></td><td>how many pairs / are there none</td></tr>
+</table></div>
+<p><b>Loop over a map</b> by looping over its keys:</p>
+${code(`
+VECTOR<STRING> sites = limitMB.GetKeys
+STRING site
+FOR site IN sites DO {
+  // site is the key, limitMB.Get(site) is the value
+}`)}
+<div class="note"><b>Habit:</b> always check <code>HasKey</code> before <code>Get</code>. Don't rely on what <code>Get</code> does with a missing key.</div>
+
+<h3>Piece 6: Skyhigh object types</h3>
+<p>Modules add their own types. They look like text but they <b>are not STRINGs</b>, so a function that wants one will reject plain text.</p>
+<div class="tbl"><table>
+<tr><th>Type</th><th>Holds</th><th>Get one from</th><th>Turn text into one</th></tr>
+<tr><td><code>MWG.URL</code></td><td>a parsed URL</td><td><code>MWG.Url</code></td><td>(use the string-arg functions)</td></tr>
+<tr><td><code>Net.IP</code> / <code>Net.IPRange</code></td><td>address / range</td><td><code>MWG.ClientIP</code></td><td><code>Net.ToIP("10.0.0.1")</code>, <code>Net.ToIPRange("10.0.0.0/8")</code></td></tr>
+<tr><td><code>MediaType</code></td><td>a file type</td><td><code>MediaType.Ensured()</code></td><td><code>ToMediaType("application/pdf")</code></td></tr>
+<tr><td><code>RegExJSi</code></td><td>a regex pattern</td><td>—</td><td><code>ToRegExJSi("^login\\\\.")</code></td></tr>
+<tr><td><code>MWG.UrlCategory</code></td><td>a web category</td><td><code>MWG.UrlCategories(setting)</code></td><td><code>ToWebUrlCategory(n)</code></td></tr>
+<tr><td><code>JSON</code></td><td>JSON data</td><td>—</td><td><code>JSON.FromString(text)</code></td></tr>
+<tr><td><code>DATAREF</code></td><td>raw bytes (a body)</td><td><code>MWG.BodyData(MWG.Request)</code></td><td><code>ToDataRef(text)</code></td></tr>
+</table></div>
+<p>Going the other way, most of them have a <code>.ToString</code>: <code>MWG.Url.ToString</code>, <code>Net.ToString(ip)</code>, <code>ToString(json)</code>.</p>
+<div class="note"><b>Reading errors:</b> when the console says a function can't take your argument, check the type first. Nine times out of ten you passed a STRING where it wanted one of these objects, or the other way round.</div>
+
+<h3>Putting it together</h3>
+<p>Every piece in one routine: per-site upload limits.</p>
+${code(`
+ROUTINE Upload_Limits ON (Web.Request) {
+  IF NOT MWG.IsUpload THEN { END }
+
+  MAP<STRING,NUMBER> limitMB = ("box.com", 50), ("dropbox.com", 25)  // MAP
+  STRING  site = MWG.Domain(MWG.Url)                                  // STRING
+  BOOLEAN known = limitMB.HasKey(site)                                // BOOLEAN
+  NUMBER  maxBytes = 0                                                // NUMBER
+
+  IF known THEN {
+    maxBytes = limitMB.Get(site) * 1024 * 1024
+    IF MWG.BodySize > maxBytes THEN {
+      MWG.Block("Uploads to " + site + " are limited to " + ToString(limitMB.Get(site)) + " MB")
+    }
+  }
+}`)}`,
+ex:{prompt:"From memory: create a MAP of two sites to MB limits, read the current site with MWG.Domain(MWG.Url), and block if the upload is bigger than that site's limit. Check HasKey first.",answer:`
+MAP<STRING,NUMBER> limitMB = ("box.com", 50), ("dropbox.com", 25)
+STRING site = MWG.Domain(MWG.Url)
+
+IF limitMB.HasKey(site) THEN {
+  IF MWG.BodySize > limitMB.Get(site) * 1024 * 1024 THEN {
+    MWG.Block("Upload too large for " + site)
+  }
+}`},
+quiz:[
+{q:"You declared NUMBER limit = 50. How do you change it to 100?",o:["NUMBER limit = 100","limit = 100","SET limit 100","limit.Set(100)"],a:1,e:"Use just the name after the first declaration. Never repeat the type."},
+{q:"Which is a valid BOOLEAN value?",o:["true","\"TRUE\"","TRUE","1"],a:2,e:"Uppercase, no quotes. \"TRUE\" is a STRING."},
+{q:"How many bytes is 50 MB, in code?",o:["50","50 * 1000","50 * 1024 * 1024","\"50MB\""],a:2,e:"MWG.BodySize is in bytes, so convert MB with * 1024 * 1024."},
+{q:"Math.Div(7, 2) returns…",o:["3.5","3","1","4"],a:1,e:"Math.Div is whole-number division. Math.Modulus(7,2) gives the remainder, 1."},
+{q:"\"Box.com\" == \"box.com\" is…",o:["TRUE","FALSE"],a:1,e:"== is exact. Use EqualsCaseInsensitive or ToLower first."},
+{q:"Which writes a double quote inside a string?",o:["\"\"","\\\"","'\"'","&quot;"],a:1,e:"Backslash escapes: \\\" \\\\ \\n \\r \\t."},
+{q:"exts holds 4 items. Which gets the last one?",o:["exts.Get(4)","exts.Get(exts.Size)","exts.Get(exts.Size - 1)","exts.Last"],a:2,e:"Indexes start at 0, so the last is Size - 1."},
+{q:"What does exts.Find(\"zip\") return if \"zip\" isn't in the list?",o:["0","FALSE","-1","An error"],a:2,e:"-1 means not found."},
+{q:"Which is a valid MAP literal?",o:["MAP<STRING,NUMBER> m = {\"a\":1}","MAP<STRING,NUMBER> m = (\"a\",1), (\"b\",2)","MAP m = [\"a\",1]","MAP<STRING,NUMBER> m = \"a\"=1"],a:1,e:"Pairs in parentheses, separated by commas."},
+{q:"limitMB already has \"box.com\". What does limitMB.Set(\"box.com\", 100) do?",o:["Error: duplicate key","Adds a second box.com","Overwrites the value with 100"],a:2,e:"Set adds a new key or overwrites an existing one."},
+{q:"How do you loop over every pair in a MAP?",o:["FOR k IN map DO","Loop over map.GetKeys and Get each value","map.ForEach","LOOP map.Size"],a:1,e:"GetKeys gives a VECTOR of keys; loop that and call Get(key)."},
+{q:"A function rejects \"10.0.0.1\" as an argument. Most likely fix?",o:["Use single quotes","Convert it with Net.ToIP(\"10.0.0.1\")","Wrap it in ToNumber"],a:1,e:"It wants a Net.IP object, not a STRING."},
+{q:"Can you put a VECTOR inside a MAP value?",o:["Yes","No"],a:1,e:"No nesting of VECTOR or MAP."}]},
+
+{id:"flow",title:"3. Decisions and stopping",body:`
+<h3>IF / ELSE IF / ELSE</h3>
+${code(`
+IF MWG.BodySize > 52428800 THEN {
+  MWG.Block("File over 50 MB")
+} ELSE IF MWG.Url.Host == "example.com" AND NOT MWG.IsAuthenticated THEN {
+  MWG.Block("Sign in first")
+} ELSE {
+  // carry on
+}`)}
+<h3>Four ways to stop</h3>
+<p>This is the part people mix up. Think of it as a ladder from smallest to biggest.</p>
+<ul>
+<li><code>END</code> stops <b>this routine</b>. The parent keeps going. <code>END(2)</code> stops this one and its parent. <code>END(Routine_Name)</code> stops up to that named routine.</li>
+<li><code>EXIT</code> stops <b>all policy for this trigger</b>. The next trigger (for example Web.Response) still runs.</li>
+<li><code>MWG.Exit("reason")</code> does the same as EXIT, and logs the reason as the last rule.</li>
+<li><code>MWG.Allow("reason")</code> stops this trigger <b>and every later trigger</b>, and lets the request through. Nothing else in the policy checks it.</li>
+</ul>
+<div class="note"><b>Watch out:</b> <code>MWG.Allow</code> skips Web.Response too, so anti-malware on the download never runs. Use it only for traffic you truly trust.</div>
+<h3>Calling other routines</h3>
+${code(`
+ROUTINE Main ON (Web.Request) {
+  CALL Check_Uploads
+}
+
+ROUTINE Check_Uploads ON () {
+  IF NOT MWG.IsUpload THEN { END }   // leave this routine only
+  // upload checks...
+}`)}
+<p><code>CALL</code> runs a routine even if its ON list doesn't include the current trigger.</p>`,
+ex:{prompt:"Write a routine on Web.Request that leaves the routine (not the whole policy) when the user is NOT authenticated, otherwise blocks with reason \"Test\".",answer:`
+ROUTINE Auth_Test ON (Web.Request) {
+  IF NOT MWG.IsAuthenticated THEN {
+    END
+  }
+  MWG.Block("Test")
+}`},
+quiz:[
+{q:"You want to skip the rest of the current routine only. Use…",o:["EXIT","END","MWG.Allow(\"x\")","BREAK"],a:1,e:"END stops the current routine; the parent continues."},
+{q:"After MWG.Allow(\"trusted\") on Web.Request, does Web.Response policy run?",o:["Yes","No"],a:1,e:"Allow stops this trigger and all later ones."},
+{q:"After EXIT on Web.Request, does Web.Response policy run?",o:["Yes","No"],a:0,e:"EXIT only stops the current trigger."},
+{q:"What does END(2) do?",o:["Ends after 2 seconds","Stops this routine and its parent","Stops 2 triggers","Error"],a:1,e:"END(n) unwinds n levels."}]},
+
+{id:"loops",title:"4. Loops and dot notation",body:`
+<h3>Loops</h3>
+${code(`
+LOOP 3 {
+  // runs 3 times
+}
+
+VECTOR<STRING> groups = MWG.UserGroups
+STRING g                       // declare the iterator FIRST
+FOR g IN groups DO {
+  IF g == "Finance" THEN { BREAK }
+}`)}
+<p><code>BREAK</code> leaves the loop. <code>CONTINUE</code> skips to the next item. The iterator must be declared before the <code>FOR</code>.</p>
+<h3>Dot notation (the big one)</h3>
+<p>Two rules explain most of the code you'll read:</p>
+<ul>
+<li>The thing before the dot becomes the <b>first argument</b>. <code>x.ToString</code> is the same as <code>ToString(x)</code>.</li>
+<li>Empty parentheses can be dropped. <code>MWG.Url</code> is the same as <code>MWG.Url()</code>.</li>
+</ul>
+${code(`
+// These two lines are identical:
+STRING xff = MWG.Request.Headers.Get("X-Forwarded-For")
+STRING xff = MWG.Get(MWG.Headers(MWG.Request()), "X-Forwarded-For")`)}
+<p>Read a dot chain left to right like a sentence: "the request's headers, get X-Forwarded-For".</p>`,
+ex:{prompt:"Loop over MWG.UserGroups and block with reason \"Contractor\" if any group equals \"Contractors\".",answer:`
+STRING grp
+FOR grp IN MWG.UserGroups DO {
+  IF grp == "Contractors" THEN {
+    MWG.Block("Contractor")
+  }
+}`},
+quiz:[
+{q:"MWG.Url.Host is the same as…",o:["MWG.Host(MWG.Url())","Host.MWG.Url","MWG.Url(Host)","MWG.Host.Url"],a:0,e:"Object before the dot becomes the first argument, and () can be dropped."},
+{q:"What must happen before FOR item IN list DO?",o:["Nothing","Declare item with its type","Call LOOP","Sort the list"],a:1,e:"The iterator must be declared first."},
+{q:"Which keyword skips to the next loop item?",o:["NEXT","SKIP","CONTINUE","END"],a:2,e:"CONTINUE."}]},
+
+{id:"triggers",title:"5. Triggers: when your code runs",body:`
+<p>A trigger is the moment the proxy runs your policy. There are three.</p>
+<ul>
+<li><b>Web.Request</b>: the browser is asking for something. Use it for URL and category blocking, app activity, upload checks, DLP on uploads, tenant restriction headers, and RBI.</li>
+<li><b>Web.Response</b>: the server answered. You now have the status code, response headers and response body. Use it for anti-malware, download type and size, and content classification.</li>
+<li><b>EmbeddedObject</b>: a child trigger for each file inside an archive, each part of a multipart upload, and each HTML tag the HTML opener checks. <code>InitialTrigger</code> tells you which parent started it.</li>
+</ul>
+<h3>HTTPS runs Web.Request more than once</h3>
+<p>For one HTTPS page load, Web.Request fires in stages:</p>
+<ul>
+<li><b>CONNECT</b>: only the host name is known. No path, no headers, no method, no body. <code>MWG.CommandName == "CONNECT"</code>.</li>
+<li><b>CERTVERIFY</b>: only with SSL inspection on. Still just the host, plus the server certificate.</li>
+<li><b>The real HTTP command</b> (GET, POST…): full URL, headers, method and body.</li>
+</ul>
+<div class="note"><b>Common bug:</b> checking a URL path or header and finding it empty. You're probably in the CONNECT pass. Skip it with <code>IF MWG.CommandName == "CONNECT" THEN { END }</code>.</div>
+<h3>Scoping idiom</h3>
+${code(`
+IF Trigger == "Web.Response" OR (Trigger == "EmbeddedObject" AND InitialTrigger == "Web.Response") THEN {
+  // download-side checks, including files inside archives
+}`)}`,
+ex:{prompt:"Write the first lines of a Web.Request routine that skips the CONNECT and CERTVERIFY passes.",answer:`
+ROUTINE Path_Check ON (Web.Request) {
+  IF MWG.CommandName == "CONNECT" OR MWG.CommandName == "CERTVERIFY" THEN {
+    END
+  }
+  // full URL is available from here
+}`},
+quiz:[
+{q:"Which trigger do you use to scan a download for malware?",o:["Web.Request","Web.Response","CONNECT"],a:1,e:"The body arrives on the response."},
+{q:"During the CONNECT pass you can read…",o:["The full URL path","Request headers","Only the host name","The POST body"],a:2,e:"Only the FQDN (from CONNECT or SNI)."},
+{q:"A ZIP download contains 3 files. Which trigger fires for each file?",o:["Web.Response 3 times","EmbeddedObject","Web.Request"],a:1,e:"EmbeddedObject fires per extracted member."},
+{q:"How do you know an EmbeddedObject came from a response?",o:["Trigger == \"Web.Response\"","InitialTrigger == \"Web.Response\"","MWG.CommandName"],a:1,e:"InitialTrigger names the parent."}]},
+
+{id:"urls",title:"6. URLs, lists and strings",body:`
+<h3>Pieces of the URL</h3>
+${code(`
+STRING full  = MWG.Url.ToString
+STRING host  = MWG.Url.Host
+STRING path  = MWG.Url.Path
+STRING q     = MWG.Url.Parameter("q")      // one query parameter
+BOOLEAN hasQ = MWG.Url.HasParameter("q")`)}
+<h3>Lists from the console</h3>
+<p>Smart Match lists you build in the UI are referenced with the <code>list_</code> prefix.</p>
+${code(`
+IF MWG.SmartMatch(MWG.Url, list_HTTP_Only_Sites) THEN {
+  // matched
+}`)}
+<p>Other list lookups by name: <code>MWG.StringListByName("name")</code>, <code>MWG.IPRangeListByName</code>, <code>MWG.WebUrlCategoryListByName</code>. Check a list with <code>Contains(list, item)</code>.</p>
+<h3>String checks you'll use daily</h3>
+${code(`
+IF FindCaseInsensitive(MWG.Url.ToString, "/upload") != -1 THEN { ... }
+IF EndsWithCaseInsensitive(MWG.Url.Host, ".sharepoint.com") THEN { ... }
+STRING clean = RegExJSi.ReplaceAllMatches(ToRegExJSi("\\\\s+"), host, "")
+IF RegExJSi.Matches(ToRegExJSi("^login\\\\."), host) THEN { ... }`)}
+<p>Also handy: <code>StartsWith</code>, <code>ToLower</code>, <code>Split(str, ",")</code>, <code>Length</code>, <code>ReplaceAll(str, find, repl)</code>.</p>
+<h3>Reputation and category</h3>
+<p><code>MWG.UrlHasHighRisk</code>, <code>MWG.UrlCategories(setting)</code>, <code>MWG.ApplicationRisk</code> and <code>MWG.ApplicationHasHighRisk</code> describe the <b>current request</b> only. There's no lookup of an app by name.</p>`,
+ex:{prompt:"Block when the host ends with \"dropbox.com\" (any case) and the URL contains \"/upload\".",answer:`
+IF EndsWithCaseInsensitive(MWG.Url.Host, "dropbox.com")
+   AND FindCaseInsensitive(MWG.Url.ToString, "/upload") != -1 THEN {
+  MWG.Block("Dropbox uploads not allowed")
+}`},
+quiz:[
+{q:"FindCaseInsensitive returns what when there's no match?",o:["FALSE","0","-1","\"\""],a:2,e:"-1 means no match."},
+{q:"How do you reference a Smart Match list named HTTP_Only_Sites?",o:["\"HTTP_Only_Sites\"","list_HTTP_Only_Sites","@HTTP_Only_Sites","List.HTTP_Only_Sites"],a:1,e:"Console lists use the list_ prefix in code."},
+{q:"How do you get the URL as a plain string?",o:["MWG.Url.ToString","MWG.Url.Text","String(MWG.Url)"],a:0,e:"MWG.Url.ToString (same as MWG.ToString(MWG.Url()))."}]},
+
+{id:"actions",title:"7. Actions: block, redirect, headers",body:`
+<h3>Stop or change the request</h3>
+${code(`
+MWG.Block("Gambling is not allowed")          // block page
+MWG.Redirect("https://intranet/policy", "Policy redirect", "Rule", "RuleSet")
+MWG.SetHTTPStatusCode(403)
+MWG.GenerateResponse("{\\"status\\":\\"denied\\"}")  // your own reply`)}
+<div class="note"><b>Gotcha:</b> <code>MWG.GenerateResponse</code> always sends 200 unless you call <code>MWG.SetHTTPStatusCode</code> first. The number in the 2-argument version is ignored.</div>
+<h3>Headers</h3>
+${code(`
+// read
+STRING ua = MWG.Request.Headers.Get("User-Agent")
+IF MWG.Request.Headers.HasHeader("X-Test") THEN { ... }
+
+// add / remove (procedures)
+MWG.Add(MWG.Headers(MWG.Request), "Restrict-Access-To-Tenants", "contoso.com")
+MWG.Remove(MWG.Headers(MWG.Request), "X-Debug")`)}
+<h3>Tag activity for reporting</h3>
+${code(`
+IF FindCaseInsensitive(MWG.Url.Path, "/logout") != -1 THEN {
+  MWG.SetApplicationActivity("Logout")
+}`)}
+<h3>Change the URL</h3>
+<p><code>MWG.SetHost(MWG.Url, "new.host")</code>, <code>MWG.SetParameter(MWG.Url, "key", "val")</code>. These change the real request, not a copy.</p>`,
+ex:{prompt:"On Web.Request for host login.microsoftonline.com, add the header Restrict-Access-To-Tenants with value contoso.com.",answer:`
+ROUTINE Tenant_Restriction ON (Web.Request) {
+  IF MWG.Url.Host == "login.microsoftonline.com" THEN {
+    MWG.Add(MWG.Headers(MWG.Request), "Restrict-Access-To-Tenants", "contoso.com")
+  }
+}`},
+quiz:[
+{q:"You call MWG.GenerateResponse(\"denied\") with no other setup. Status code?",o:["403","200","500"],a:1,e:"Always 200 unless you SetHTTPStatusCode first."},
+{q:"Which is a procedure?",o:["MWG.Request.Headers.Get","MWG.Add(MWG.Headers(MWG.Request), \"X\", \"1\")","MWG.Url.Host"],a:1,e:"Add changes something and returns nothing."},
+{q:"Which procedure labels the activity in reports?",o:["MWG.SetApplicationActivity","MWG.SetLabel","MWG.Tag"],a:0,e:"MWG.SetApplicationActivity(\"Login\")."}]},
+
+{id:"dlp",title:"8. DLP and RBI",body:`
+<h3>DLP flow (classifier → routine → match → incident)</h3>
+<p>Think of it as four steps:</p>
+<ul>
+<li><b>Get a classifier</b>: <code>MWG.GetDLPClassifier()</code></li>
+<li><b>Start a DLP routine</b> to collect results: <code>DLP.StartRoutine(classifier, "routineName")</code> returns an incident collector.</li>
+<li><b>Check and record</b>: <code>DLP.Match(classifier, classification)</code>, then <code>DLP.Add(collector, severity)</code>.</li>
+<li><b>Raise the incident</b>: <code>DLP.CreateIncident(classifier, collector, "text")</code>.</li>
+</ul>
+<p>Quick yes/no without incidents: <code>MWG.DLPClassificationMatches(setting)</code>. Severities: <code>DLP.SeverityInfo / Warning / Minor / Major / Critical</code>.</p>
+<div class="note"><b>Naming trap:</b> the name you see in the console can differ from the name the code expects. Copy the reference from a working routine.</div>
+<h3>RBI (Remote Browser Isolation)</h3>
+<ul>
+<li>RBI decisions belong on <b>Web.Request</b>. By the response, it's too late.</li>
+<li>Always check <code>RBI.IsInIsolation</code> before doing things that could fire again inside the isolated session, or you get a loop.</li>
+<li>Controls: <code>RBI.SetWatermarking(TRUE)</code>, <code>RBI.SetSiteReadOnly()</code>, <code>RBI.SetBlockPrinting(TRUE)</code>, clipboard and upload/download file controls.</li>
+</ul>
+${code(`
+ROUTINE Watermark_Docs ON (Web.Request) {
+  IF RBI.IsInIsolation THEN {
+    RBI.SetWatermarking(TRUE)
+  }
+}`)}`,
+ex:{prompt:"List the four DLP steps in order with the function or procedure for each.",answer:`
+// 1  MWG.GetDLPClassifier()
+// 2  DLP.StartRoutine(classifier, "routineName")
+// 3  DLP.Match(classifier, classification)  then  DLP.Add(collector, severity)
+// 4  DLP.CreateIncident(classifier, collector, "message")`},
+quiz:[
+{q:"Which trigger should RBI policy use?",o:["Web.Request","Web.Response","EmbeddedObject"],a:0,e:"RBI must be decided at request time."},
+{q:"Why check RBI.IsInIsolation?",o:["It's required syntax","To avoid re-triggering inside an isolated session (loops)","To enable watermarking"],a:1,e:"Prevents infinite loops like the tenant restriction issue."},
+{q:"Which call actually creates the DLP incident?",o:["DLP.Add","DLP.Match","DLP.CreateIncident"],a:2,e:"Add records a hit; CreateIncident raises it."}]},
+
+{id:"gotchas",title:"9. Gotchas from your tenant",body:`
+<p>These came from real debugging. When the docs and a working routine disagree, trust the working routine.</p>
+<ul>
+<li>Smart Match: <code>MWG.SmartMatch(MWG.Url, list_ListName)</code>.</li>
+<li>URL as text: <code>MWG.Url.ToString</code>, not <code>MWG.Raw(MWG.Url())</code>.</li>
+<li>Regex replace: <code>RegExJSi.ReplaceAllMatches(ToRegExJSi("pattern"), string, replacement)</code>.</li>
+<li><code>FindCaseInsensitive</code> returns <code>-1</code> for no match. Compare with <code>!= -1</code>.</li>
+<li>Some functions in the docs aren't in every tenant. If the console says a function doesn't exist, check a working sample before rewriting logic.</li>
+<li>RBI and watermarking go on <code>Web.Request</code>. Check <code>RBI.IsInIsolation</code> to stop loops.</li>
+<li>For some URL shapes, <code>MWG.Parameter()</code> parses only with the <code>!?</code> terminator, e.g. <code>https://site.com/!?skyhigh_rbi=true</code>.</li>
+<li>Single-page apps like Copilot with strict content security policy resist injected HTML. The native error is often the practical result.</li>
+<li>When code gets unreliable, the GUI rule builder is a fine fallback.</li>
+</ul>
+<h3>Debug routine</h3>
+<ul>
+<li>Read the error line number and the exact function name it names.</li>
+<li>Look for single quotes, lowercase keywords, missing <code>THEN</code>.</li>
+<li>Check you're not in the CONNECT pass.</li>
+<li>Check the trigger: is the data you want even available yet?</li>
+</ul>`,
+ex:{prompt:"Write a routine that redirects nothing yet, but skips CONNECT, skips isolated sessions, and checks if the URL matches list_HTTP_Only_Sites.",answer:`
+ROUTINE HTTP_Only ON (Web.Request) {
+  IF MWG.CommandName == "CONNECT" THEN { END }
+  IF RBI.IsInIsolation THEN { END }
+  IF MWG.SmartMatch(MWG.Url, list_HTTP_Only_Sites) THEN {
+    // action goes here
+  }
+}`},
+quiz:[
+{q:"The console rejects a function that the docs list. First step?",o:["Rewrite the whole routine","Compare against a working sample in your tenant","Switch to Web.Response"],a:1,e:"Working samples are the most reliable reference."},
+{q:"Which is the confirmed way to get the URL as a string in your tenant?",o:["MWG.Raw(MWG.Url())","MWG.Url.ToString","MWG.UrlString"],a:1,e:"MWG.Url.ToString."}]}
+];
+
+/* ---------- FLASHCARDS ---------- */
+const C=[
+["routines","What does MOWGLI stand for?","MOdules With Gluing Language Interpreter. Policy Code = MOWGLI + Skyhigh's modules."],
+["routines","Skeleton of a routine that runs on requests?","ROUTINE Name ON (Web.Request) {\n  // logic\n}"],
+["routines","ON ANY vs ON ()?","ON ANY runs on every trigger. ON () only runs when CALLed."],
+["routines","Function vs procedure?","Functions return a value (answer). Procedures do something and return nothing (act)."],
+["routines","Which quotes can strings use?","Double quotes only. Single quotes are invalid."],
+["routines","How do you comment?","// line comments only. No /* */ blocks."],
+["routines","How do you join two strings?","With +   e.g.  \"user: \" + MWG.Username"],
+["routines","Keyword case?","UPPERCASE: IF THEN ELSE AND OR NOT TRUE FALSE END EXIT CALL"],
+["types","The three simple types?","BOOLEAN, NUMBER, STRING"],
+["types","Pattern for declaring a variable?","TYPE name = value\ne.g.  NUMBER limitMB = 50"],
+["types","Change a variable after declaring it?","Name only, no type:\nlimitMB = 100"],
+["types","The two BOOLEAN values?","TRUE and FALSE (uppercase, no quotes)"],
+["types","Is \"TRUE\" a BOOLEAN?","No. In quotes it's a STRING."],
+["types","Three places BOOLEANs come from?","Is/Has functions (MWG.IsUpload), comparisons (== != < >), AND/OR/NOT"],
+["types","Does NUMBER cover decimals?","Yes. One type for whole numbers and decimals (exact up to 2^52)."],
+["types","50 MB in bytes, in code?","50 * 1024 * 1024"],
+["types","Unit of MWG.BodySize?","Bytes"],
+["types","Integer division and remainder?","Math.Div(7, 2) = 3\nMath.Modulus(7, 2) = 1"],
+["types","Show a byte count as \"1 GB\"?","ToVolumeString(MWG.BodySize)"],
+["types","Convert between NUMBER and STRING?","ToString(50) -> \"50\"\nToNumber(\"50\") -> 50"],
+["types","The five string escapes?","\\\"  \\\\  \\n  \\r  \\t"],
+["types","Is == case-sensitive on strings?","Yes. Use EqualsCaseInsensitive(a, b) or ToLower first."],
+["types","Turn \"a,b,c\" into a list?","Split(s, \",\") returns VECTOR<STRING>"],
+["types","Declare a list of strings?","VECTOR<STRING> exts = \"exe\", \"msi\""],
+["types","Append to a VECTOR?","exts.Add(\"bat\")"],
+["types","Get the last item of a VECTOR?","exts.Get(exts.Size - 1)"],
+["types","Replace / remove a VECTOR item?","exts.Set(1, \"msp\")\nexts.Remove(1)   exts.RemoveLast"],
+["types","Yes/no: is \"exe\" in the list?","Contains(exts, \"exe\")"],
+["types","What does Find return when nothing is found?","-1"],
+["types","Index of the first item in a VECTOR?","0"],
+["types","Declare a map?","MAP<STRING,NUMBER> m = (\"a\", 1), (\"b\", 2)"],
+["types","Allowed MAP key types?","STRING or NUMBER"],
+["types","Add or overwrite a MAP entry?","m.Set(\"box.com\", 100)"],
+["types","Check if a MAP has a key?","m.HasKey(\"box.com\")  (check before Get)"],
+["types","Loop over a MAP?","VECTOR<STRING> ks = m.GetKeys\nSTRING k\nFOR k IN ks DO { m.Get(k) }"],
+["types","Can a VECTOR hold another VECTOR?","No. VECTOR and MAP can't be nested."],
+["types","Text to IP / IP range?","Net.ToIP(\"10.0.0.1\")\nNet.ToIPRange(\"10.0.0.0/8\")"],
+["types","Text to regex / media type?","ToRegExJSi(\"pattern\")\nToMediaType(\"application/pdf\")"],
+["types","Function rejects your argument. First check?","The type: STRING passed where an object (Net.IP, RegExJSi, MediaType…) is expected, or vice versa."],
+["flow","END does what?","Stops the current routine. The parent keeps running."],
+["flow","EXIT does what?","Stops all policy for this trigger. The next trigger still runs."],
+["flow","MWG.Allow(\"x\") does what?","Allows the request and stops this trigger AND all later triggers (Web.Response won't run)."],
+["flow","Why be careful with MWG.Allow?","It skips Web.Response, so download anti-malware never runs."],
+["flow","END(2)?","Stops this routine and its parent."],
+["flow","CALL on a routine not scoped for this trigger?","It still runs. CALL ignores the ON list."],
+["flow","IF syntax?","IF cond THEN { } ELSE IF cond THEN { } ELSE { }"],
+["loops","Run something 5 times?","LOOP 5 { ... }"],
+["loops","Loop over a list?","STRING g\nFOR g IN groups DO { ... }\n(iterator declared first)"],
+["loops","Leave a loop early / skip an item?","BREAK / CONTINUE"],
+["loops","Dot notation rule 1?","The object before the dot becomes the first argument. x.ToString == ToString(x)"],
+["loops","Dot notation rule 2?","Empty () can be dropped. MWG.Url == MWG.Url()"],
+["loops","Long form of MWG.Request.Headers.Get(\"X\")?","MWG.Get(MWG.Headers(MWG.Request()), \"X\")"],
+["triggers","The three triggers?","Web.Request, Web.Response, EmbeddedObject"],
+["triggers","What's known during CONNECT?","Only the host name (FQDN). No path, headers, method or body."],
+["triggers","Order of Web.Request passes on HTTPS?","CONNECT → CERTVERIFY (if SSL inspection) → HTTP command (GET/POST…)"],
+["triggers","Skip the CONNECT pass?","IF MWG.CommandName == \"CONNECT\" THEN { END }"],
+["triggers","When does EmbeddedObject fire?","Each file in an archive, each multipart part, each HTML tag checked."],
+["triggers","Which trigger for anti-malware on downloads?","Web.Response"],
+["triggers","Which trigger for URL blocking, DLP uploads, tenant restriction?","Web.Request"],
+["triggers","Find the parent of an EmbeddedObject?","InitialTrigger"],
+["urls","URL as a string?","MWG.Url.ToString"],
+["urls","Host of the URL?","MWG.Url.Host"],
+["urls","Get a query parameter?","MWG.Url.Parameter(\"q\")"],
+["urls","Match a console Smart Match list?","MWG.SmartMatch(MWG.Url, list_ListName)"],
+["urls","Case-insensitive substring check?","FindCaseInsensitive(str, \"x\") != -1"],
+["urls","Regex replace?","RegExJSi.ReplaceAllMatches(ToRegExJSi(\"pattern\"), str, \"repl\")"],
+["urls","Regex test?","RegExJSi.Matches(ToRegExJSi(\"^login\\\\.\"), host)"],
+["urls","Read a header?","MWG.Request.Headers.Get(\"User-Agent\")"],
+["actions","Block with a reason?","MWG.Block(\"reason\")"],
+["actions","Custom response with a 403?","MWG.SetHTTPStatusCode(403)\nMWG.GenerateResponse(\"body\")"],
+["actions","Default status of GenerateResponse?","200 (the number argument is ignored)"],
+["actions","Add a request header?","MWG.Add(MWG.Headers(MWG.Request), \"Name\", \"value\")"],
+["actions","Tag a login/logout activity?","MWG.SetApplicationActivity(\"Login\")"],
+["dlp","DLP steps in order?","GetDLPClassifier → DLP.StartRoutine → DLP.Match + DLP.Add → DLP.CreateIncident"],
+["dlp","Quick DLP yes/no without an incident?","MWG.DLPClassificationMatches(setting)"],
+["dlp","Five DLP severities?","Info, Warning, Minor, Major, Critical"],
+["dlp","Which trigger for RBI?","Web.Request"],
+["dlp","How to avoid RBI loops?","Check RBI.IsInIsolation before acting."],
+["dlp","Turn on watermarking?","RBI.SetWatermarking(TRUE)"],
+["gotchas","Docs list a function the console rejects. Now what?","Check a working routine in your tenant; trust it over the docs."],
+["gotchas","MWG.Parameter() fails on some URL shapes. Fix?","Use the !? terminator, e.g. https://site.com/!?skyhigh_rbi=true"]
+];
+const CARDS=C.map((c,i)=>({id:"c"+i,sec:c[0],front:c[1],back:c[2]}));
+const INTERVAL=[0,1,3,7,14]; // days per box
+const DAY=86400000;
+
+/* ---------- STATE ---------- */
+let scores=store("pct.scores")||{};
+let cardState=store("pct.cards")||{};
+let current=store("pct.section")||"start";
+if(!S.find(s=>s.id===current))current="start";
+
+/* ---------- LESSON RENDER ---------- */
+const rail=document.getElementById("rail"),lesson=document.getElementById("lesson");
+function pill(s){if(!s.quiz.length)return"";const sc=scores[s.id];if(sc==null)return'<span class="pill">new</span>';
+  const pass=sc>=s.quiz.length;return'<span class="pill '+(pass?"pass":"part")+'">'+sc+"/"+s.quiz.length+"</span>"}
+function renderRail(){rail.innerHTML=S.map(s=>'<button data-id="'+s.id+'" aria-current="'+(s.id===current)+'"><span>'+s.title+"</span>"+pill(s)+"</button>").join("")}
+rail.addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;current=b.dataset.id;store("pct.section",current);renderRail();renderLesson();window.scrollTo({top:0})});
+
+function renderLesson(){
+  const idx=S.findIndex(s=>s.id===current),s=S[idx];
+  let h='<div class="eyebrow">'+(idx===0?"Start here":"Section "+idx+" of "+(S.length-1))+"</div><h2>"+s.title.replace(/^\d+\.\s*/,"")+"</h2>"+s.body;
+  if(s.ex){h+='<div class="panel"><h3>Write it from memory</h3><p>'+s.ex.prompt+'</p><textarea id="ex-'+s.id+'" spellcheck="false" placeholder="Type your code here without scrolling up…"></textarea><div class="row"><button class="btn ghost" id="showAns">Show model answer</button></div><div id="ans" hidden><p class="small">Compare line by line. Anything you missed? Say it out loud, then retype it.</p>'+code(s.ex.answer)+"</div></div>"}
+  if(s.quiz.length){h+='<div class="panel"><h3>Check yourself</h3><div id="quiz">'+s.quiz.map((q,i)=>'<div class="q" data-i="'+i+'"><p>'+(i+1)+". "+esc(q.q)+'</p><div class="opts">'+q.o.map((o,j)=>'<button class="opt" data-j="'+j+'">'+esc(o)+"</button>").join("")+'</div><div class="explain" hidden></div></div>').join("")+'</div><div class="row"><span class="score" id="qscore">0 / '+s.quiz.length+'</span><button class="btn ghost" id="retry">Retry</button></div></div>'}
+  h+='<div class="pager">'+(idx>0?'<button class="btn ghost" data-go="'+S[idx-1].id+'">← '+S[idx-1].title+"</button>":"<span></span>")+(idx<S.length-1?'<button class="btn" data-go="'+S[idx+1].id+'">'+S[idx+1].title+" →</button>":"")+"</div>";
+  lesson.innerHTML=h;
+  const draftKey="pct.ex."+s.id,ta=document.getElementById("ex-"+s.id);
+  if(ta){ta.value=store(draftKey)||"";ta.addEventListener("input",()=>store(draftKey,ta.value));
+    document.getElementById("showAns").onclick=()=>{document.getElementById("ans").hidden=false}}
+  if(s.quiz.length){let right=0,answered=0;
+    lesson.querySelectorAll(".q").forEach(qe=>{const q=s.quiz[+qe.dataset.i];
+      qe.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{const j=+b.dataset.j;
+        qe.querySelectorAll(".opt").forEach(x=>{x.disabled=true;if(+x.dataset.j===q.a)x.classList.add("right")});
+        if(j!==q.a)b.classList.add("wrong");else right++;answered++;
+        const ex=qe.querySelector(".explain");ex.textContent=(j===q.a?"Correct. ":"Not quite. ")+q.e;ex.hidden=false;
+        document.getElementById("qscore").textContent=right+" / "+s.quiz.length;
+        if(answered===s.quiz.length){if(scores[s.id]==null||right>scores[s.id]){scores[s.id]=right;store("pct.scores",scores);renderRail()}}
+      })});
+    document.getElementById("retry").onclick=renderLesson}
+  lesson.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{current=b.dataset.go;store("pct.section",current);renderRail();renderLesson();window.scrollTo({top:0})});
+}
+
+/* ---------- FLASHCARD RENDER ---------- */
+const filt=document.getElementById("deckFilter"),mode=document.getElementById("deckMode"),area=document.getElementById("cardArea"),boxesEl=document.getElementById("boxes");
+filt.innerHTML='<option value="all">All sections</option>'+S.filter(s=>s.quiz.length).map(s=>'<option value="'+s.id+'">'+s.title+"</option>").join("");
+let queue=[],flipped=false;
+function st(id){return cardState[id]||{box:0,due:0}}
+function buildQueue(){const now=Date.now();
+  queue=CARDS.filter(c=>(filt.value==="all"||c.sec===filt.value)&&(mode.value==="all"||st(c.id).due<=now));
+  for(let i=queue.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[queue[i],queue[j]]=[queue[j],queue[i]]}
+  flipped=false;renderCard()}
+function renderBoxes(){const pool=CARDS.filter(c=>filt.value==="all"||c.sec===filt.value),n=[0,0,0,0,0];
+  pool.forEach(c=>n[st(c.id).box]++);
+  const lbl=["Box 1 · daily","Box 2 · 1 day","Box 3 · 3 days","Box 4 · 1 wk","Box 5 · 2 wks"];
+  boxesEl.innerHTML=n.map((v,i)=>"<div><b>"+v+"</b><span>"+lbl[i]+"</span></div>").join("")}
+function renderCard(){renderBoxes();
+  if(!queue.length){area.innerHTML='<div class="done"><h3 style="font-family:var(--f-display);margin:0 0 6px">Nothing due right now</h3><p class="small">Come back tomorrow, or switch to "All cards" to keep practicing.</p></div>';return}
+  const c=queue[0],sec=S.find(s=>s.id===c.sec);
+  area.innerHTML='<div class="card" id="card" tabindex="0" role="button" aria-label="Flip card"><div class="meta"><span>'+sec.title+"</span><span>"+queue.length+' left</span></div><div class="front">'+esc(c.front)+"</div>"+(flipped?'<div class="back">'+code(c.back)+"</div>":'<div class="hint">Say the answer out loud, then tap to check.</div>')+"</div>"+(flipped?'<div class="grade"><button class="again" data-g="0">Again</button><button class="good" data-g="1">Good</button><button class="easy" data-g="2">Easy</button></div>':"");
+  const card=document.getElementById("card");
+  const flip=()=>{if(!flipped){flipped=true;renderCard()}};
+  card.onclick=flip;card.onkeydown=e=>{if(e.key===" "||e.key==="Enter"){e.preventDefault();flip()}};
+  area.querySelectorAll("[data-g]").forEach(b=>b.onclick=()=>grade(+b.dataset.g))}
+function grade(g){const c=queue.shift(),s=st(c.id);
+  if(g===0){s.box=0;s.due=0;queue.push(c)}else{s.box=Math.min(4,s.box+g);s.due=Date.now()+INTERVAL[s.box]*DAY-3600000}
+  cardState[c.id]=s;store("pct.cards",cardState);flipped=false;renderCard()}
+document.addEventListener("keydown",e=>{if(document.getElementById("view-cards").hidden||!flipped)return;
+  if(e.key==="1")grade(0);if(e.key==="2")grade(1);if(e.key==="3")grade(2)});
+filt.onchange=buildQueue;mode.onchange=buildQueue;
+const resetBtn=document.getElementById("resetCards");let armed=false;
+resetBtn.onclick=()=>{if(!armed){armed=true;resetBtn.textContent="Click again to reset";setTimeout(()=>{armed=false;resetBtn.textContent="Reset progress"},3000);return}
+  cardState={};store("pct.cards",cardState);armed=false;resetBtn.textContent="Reset progress";buildQueue()};
+
+/* ---------- TABS ---------- */
+document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll(".tabs button").forEach(x=>x.setAttribute("aria-selected",x===b));
+  document.getElementById("view-lessons").hidden=b.dataset.view!=="lessons";
+  document.getElementById("view-cards").hidden=b.dataset.view!=="cards";
+  if(b.dataset.view==="cards")buildQueue()});
+
+renderRail();renderLesson();
+})();
+</script>
+</body>
+</html>
