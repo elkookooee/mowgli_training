@@ -57,7 +57,7 @@ article{min-width:0}
 article h2{font-family:var(--f-display);font-size:30px;line-height:1.15;margin:4px 0 12px;text-wrap:balance}
 article h3{font-family:var(--f-display);font-size:20px;margin:28px 0 8px}
 article p,article li{max-width:90ch}
-article ul{padding-left:20px;display:grid;gap:4px}
+article ul,article ol{padding-left:20px;display:grid;gap:4px}
 code{font-family:var(--f-mono);font-size:.86em;background:var(--accent-soft);padding:1px 5px;border-radius:4px}
 pre{background:var(--code-bg);color:var(--code-fg);font:14px/1.6 var(--f-mono);padding:16px 18px;border-radius:10px;overflow-x:auto;margin:12px 0}
 pre code{background:none;padding:0;font-size:inherit;color:inherit}
@@ -457,26 +457,127 @@ IF MWG.BodySize > 52428800 THEN {
 } ELSE {
   // carry on
 }`)}
-<h3>Four ways to stop</h3>
-<p>This is the part people mix up. Think of it as a ladder from smallest to biggest.</p>
 <ul>
-<li><code>END</code> stops <b>this routine</b>. The parent keeps going. <code>END(2)</code> stops this one and its parent. <code>END(Routine_Name)</code> stops up to that named routine.</li>
-<li><code>EXIT</code> stops <b>all policy for this trigger</b>. The next trigger (for example Web.Response) still runs.</li>
-<li><code>MWG.Exit("reason")</code> does the same as EXIT, and logs the reason as the last rule.</li>
-<li><code>MWG.Allow("reason")</code> stops this trigger <b>and every later trigger</b>, and lets the request through. Nothing else in the policy checks it.</li>
+<li>Conditions are checked <b>top to bottom</b>. The first one that is true wins and the rest are skipped.</li>
+<li>Every <code>IF</code> and <code>ELSE IF</code> needs <code>THEN</code> and braces, even for one line.</li>
+<li>Put the most specific check first. A broad check above it will catch the traffic before the specific one ever sees it.</li>
 </ul>
-<div class="note"><b>Watch out:</b> <code>MWG.Allow</code> skips Web.Response too, so anti-malware on the download never runs. Use it only for traffic you truly trust.</div>
-<h3>Calling other routines</h3>
+
+<h3>Parents and children</h3>
+<p>When one routine <code>CALL</code>s another, the caller is the <b>parent</b> and the routine it calls is the <b>child</b>. A child can call its own child, so you get a chain. The trigger sits above all of them and starts the top routine.</p>
+${code(`
+// Web.Request fires
+//   Main                  parent of Uploads and Category_Check
+//     Uploads             child of Main, parent of Size_Check and Type_Check
+//       Size_Check        child of Uploads (grandchild of Main)
+//       Type_Check        child of Uploads
+//     Category_Check      child of Main`)}
+<p>Here is that chain as code. Every example below uses it.</p>
 ${code(`
 ROUTINE Main ON (Web.Request) {
-  CALL Check_Uploads
+  CALL Uploads          // Main is the parent
+  CALL Category_Check   // runs after Uploads finishes
 }
 
-ROUTINE Check_Uploads ON () {
-  IF NOT MWG.IsUpload THEN { END }   // leave this routine only
-  // upload checks...
+ROUTINE Uploads ON () {
+  CALL Size_Check       // Uploads is now the parent
+  CALL Type_Check
+}
+
+ROUTINE Size_Check ON () {
+  // child of Uploads
 }`)}
-<p><code>CALL</code> runs a routine even if its ON list doesn't include the current trigger.</p>`,
+<p>When a child finishes, the parent picks up on the line <b>right after the CALL</b>. The way you stop decides how far back up the chain you jump. <code>CALL</code> runs a routine even if its ON list doesn't include the current trigger.</p>
+
+<h3>Four ways to stop</h3>
+<p>This is the part people mix up. Think of it as a ladder from smallest to biggest.</p>
+<div class="tbl"><table>
+<tr><th>Stop</th><th>What stops</th><th>What still runs</th><th>Use it when</th></tr>
+<tr><td><code>END</code></td><td>This routine</td><td>The parent, from the line after the CALL. Later triggers.</td><td>This routine has nothing left to do, but other checks should still happen.</td></tr>
+<tr><td><code>END(2)</code></td><td>This routine and its parent</td><td>The grandparent. Later triggers.</td><td>A child finds an answer that makes the rest of its parent pointless.</td></tr>
+<tr><td><code>END(Name)</code></td><td>Every routine back up to and including <code>Name</code></td><td>Whatever called <code>Name</code>. Later triggers.</td><td>Same idea in a deep chain, where counting levels is easy to get wrong.</td></tr>
+<tr><td><code>EXIT</code></td><td>All policy for this trigger, parents included</td><td>Later triggers (Web.Response)</td><td>The request side is decided, but you still want the response scanned.</td></tr>
+<tr><td><code>MWG.Exit("why")</code></td><td>Same as EXIT</td><td>Same as EXIT</td><td>Same as EXIT, and you want the reason in the log.</td></tr>
+<tr><td><code>MWG.Allow("why")</code></td><td>This trigger and every later trigger. The request is allowed.</td><td>Nothing</td><td>Traffic you trust end to end. Rarely.</td></tr>
+</table></div>
+
+<h3>Example 1: END leaves only the child</h3>
+${code(`
+ROUTINE Uploads ON () {
+  IF NOT MWG.IsUpload THEN {
+    END                 // not an upload: leave Uploads only
+  }
+  CALL Size_Check       // skipped for non-uploads
+  CALL Type_Check       // skipped for non-uploads
+}
+// Back in Main: CALL Category_Check still runs.`)}
+<p><b>When:</b> a guard at the top of a child. "This routine doesn't apply to this traffic, but the rest of the policy does."</p>
+
+<h3>Example 2: END(2) leaves the child and its parent</h3>
+${code(`
+ROUTINE Size_Check ON () {
+  IF MWG.Url.Host == "backup.example.com" THEN {
+    END(2)              // stops Size_Check AND its parent Uploads
+  }
+  IF MWG.BodySize > 52428800 THEN {
+    MWG.Block("File over 50 MB")
+  }
+}
+// Type_Check (in Uploads) is skipped.
+// Back in Main: CALL Category_Check still runs.`)}
+<p><b>When:</b> the child learns something that makes all upload checks pointless (an exempt backup site), but category checks in Main should still happen. A plain <code>END</code> here would only skip the size check, and Type_Check would still run.</p>
+
+<h3>Example 3: END(Name) unwinds to a named routine</h3>
+<p>Say Type_Check has its own child, Archive_Check. Now the chain is Main → Uploads → Type_Check → Archive_Check.</p>
+${code(`
+ROUTINE Archive_Check ON () {
+  IF MWG.Url.Host == "backup.example.com" THEN {
+    END(Uploads)        // stops Archive_Check, Type_Check and Uploads
+  }
+  // archive checks...
+}
+// Back in Main: CALL Category_Check still runs.`)}
+<p><b>When:</b> the chain is deep. <code>END(3)</code> would do the same today, but breaks silently if someone adds or removes a level. The name keeps working.</p>
+
+<h3>Example 4: EXIT stops the whole trigger</h3>
+${code(`
+ROUTINE Main ON (Web.Request) {
+  IF MWG.Url.Host == "health.example.com" THEN {
+    EXIT                // no more Web.Request policy at all
+  }
+  CALL Uploads          // skipped
+  CALL Category_Check   // skipped
+}
+// Web.Response still runs, so the reply is still scanned.`)}
+<p><b>When:</b> nothing else on this trigger needs to look at the request, like a monitoring health check, but you still want anti-malware on the response. EXIT inside a child stops the parents too, so the line after the CALL never runs.</p>
+
+<h3>Example 5: MWG.Exit logs why</h3>
+${code(`
+IF MWG.Url.Host == "health.example.com" THEN {
+  MWG.Exit("Health check: skip request policy")
+}`)}
+<p><b>When:</b> same as EXIT, and you want to see the reason in the log as the last rule that ran. Prefer it over bare EXIT so the next person debugging knows what happened.</p>
+
+<h3>Example 6: MWG.Allow lets it through, no more checks</h3>
+${code(`
+ROUTINE Trusted_Updates ON (Web.Request) {
+  IF MWG.Url.Host == "updates.internal.example.com" THEN {
+    MWG.Allow("Internal update server")
+  }
+}
+// Web.Request stops here and the request is allowed.
+// Web.Response never runs: no anti-malware on the download.`)}
+<p><b>When:</b> only for traffic you trust completely, such as your own internal servers. Never for a whole category or a public site.</p>
+<div class="note"><b>Watch out:</b> <code>MWG.Allow</code> skips Web.Response too, so anti-malware on the download never runs. Use it only for traffic you truly trust.</div>
+
+<h3>Pick the right one</h3>
+<ol>
+<li>Is it just <b>this routine</b> that has nothing left to do? Use <code>END</code>.</li>
+<li>Should the <b>parent</b> (or more levels) stop too, while the rest of the trigger keeps going? Use <code>END(2)</code>, or <code>END(Name)</code> in a deep chain.</li>
+<li>Is <b>this trigger</b> done, but the response should still be checked? Use <code>MWG.Exit("why")</code> (or <code>EXIT</code>).</li>
+<li>Is the traffic <b>trusted end to end</b>? Only then use <code>MWG.Allow("why")</code>.</li>
+</ol>
+<div class="note"><b>Common mistake:</b> using <code>EXIT</code> in a child when you meant <code>END</code>. Every check after it is skipped, including the ones in Main, and nothing tells you.</div>`,
 ex:{prompt:"Write a routine on Web.Request that leaves the routine (not the whole policy) when the user is NOT authenticated, otherwise blocks with reason \"Test\".",answer:`
 ROUTINE Auth_Test ON (Web.Request) {
   IF NOT MWG.IsAuthenticated THEN {
@@ -488,7 +589,11 @@ quiz:[
 {q:"You want to skip the rest of the current routine only. Use…",o:["EXIT","END","MWG.Allow(\"x\")","BREAK"],a:1,e:"END stops the current routine; the parent continues."},
 {q:"After MWG.Allow(\"trusted\") on Web.Request, does Web.Response policy run?",o:["Yes","No"],a:1,e:"Allow stops this trigger and all later ones."},
 {q:"After EXIT on Web.Request, does Web.Response policy run?",o:["Yes","No"],a:0,e:"EXIT only stops the current trigger."},
-{q:"What does END(2) do?",o:["Ends after 2 seconds","Stops this routine and its parent","Stops 2 triggers","Error"],a:1,e:"END(n) unwinds n levels."}]},
+{q:"What does END(2) do?",o:["Ends after 2 seconds","Stops this routine and its parent","Stops 2 triggers","Error"],a:1,e:"END(n) unwinds n levels."},
+{q:"Main CALLs Uploads, which CALLs Size_Check. Size_Check runs END. What runs next?",o:["The line after CALL Size_Check in Uploads","The line after CALL Uploads in Main","Web.Response","Nothing"],a:0,e:"END leaves only Size_Check. Its parent, Uploads, picks up after the CALL."},
+{q:"Same chain, but Size_Check runs END(2). What runs next?",o:["The line after CALL Size_Check in Uploads","The line after CALL Uploads in Main","Nothing on this trigger"],a:1,e:"END(2) stops Size_Check and Uploads. Main picks up after CALL Uploads."},
+{q:"Size_Check runs EXIT. Does CALL Category_Check in Main still run?",o:["Yes","No"],a:1,e:"EXIT stops all policy for this trigger, parents included."},
+{q:"Which stop keeps working if someone adds a routine level in the middle of the chain?",o:["END(3)","END(Name)","EXIT"],a:1,e:"A name doesn't change when levels are added. A count does."}]},
 
 {id:"loops",title:"4. Loops and dot notation",body:`
 <h3>Loops</h3>
@@ -740,6 +845,11 @@ const C=[
 ["flow","MWG.Allow(\"x\") does what?","Allows the request and stops this trigger AND all later triggers (Web.Response won't run)."],
 ["flow","Why be careful with MWG.Allow?","It skips Web.Response, so download anti-malware never runs."],
 ["flow","END(2)?","Stops this routine and its parent."],
+["flow","Parent vs child routine?","The routine that does the CALL is the parent. The routine it calls is the child."],
+["flow","After a child ENDs, where does the parent resume?","On the line right after the CALL."],
+["flow","END(Name)?","Stops every routine back up to and including Name. Safer than counting levels in a deep chain."],
+["flow","EXIT vs MWG.Exit(\"why\")?","Same effect (stop this trigger). MWG.Exit also logs the reason."],
+["flow","Which stop for a guard at the top of a child?","END. Leave this routine, let the rest of the policy run."],
 ["flow","CALL on a routine not scoped for this trigger?","It still runs. CALL ignores the ON list."],
 ["flow","IF syntax?","IF cond THEN { } ELSE IF cond THEN { } ELSE { }"],
 ["loops","Run something 5 times?","LOOP 5 { ... }"],
