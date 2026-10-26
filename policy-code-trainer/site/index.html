@@ -70,7 +70,9 @@ textarea{width:100%;min-height:150px;font:14px/1.5 var(--f-mono);background:var(
 .btn{font:600 15px var(--f-body);border:1px solid var(--accent);background:var(--accent);color:#fff;padding:8px 16px;border-radius:8px;cursor:pointer}
 :root[data-theme="dark"] .btn{color:#08101a}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .btn{color:#08101a}}
-.btn.ghost{background:transparent;color:var(--accent)}
+.btn.ghost,:root[data-theme="dark"] .btn.ghost{background:#fff;color:#000;border-color:var(--line)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .btn.ghost{background:#fff;color:#000}}
+.btn.ghost:hover:not(:disabled){border-color:var(--accent)}
 .btn:disabled{opacity:.45;cursor:default}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
 .q{border-top:1px solid var(--line);padding-top:16px;margin-top:16px}
@@ -796,12 +798,23 @@ rail.addEventListener("click",e=>{const b=e.target.closest("button");if(!b)retur
 function renderLesson(){
   const idx=S.findIndex(s=>s.id===current),s=S[idx];
   let h='<div class="eyebrow">'+(idx===0?"Start here":"Section "+idx+" of "+(S.length-1))+"</div><h2>"+s.title.replace(/^\d+\.\s*/,"")+"</h2>"+s.body;
-  if(s.ex){h+='<div class="panel"><h3>Write it from memory</h3><p>'+s.ex.prompt+'</p><textarea id="ex-'+s.id+'" spellcheck="false" placeholder="Type your code here without scrolling up…"></textarea><div class="row"><button class="btn ghost" id="showAns">Show model answer</button></div><div id="ans" hidden><p class="small">Compare line by line. Anything you missed? Say it out loud, then retype it.</p>'+code(s.ex.answer)+"</div></div>"}
+  if(s.ex){h+='<div class="panel"><h3>Write it from memory</h3><p>'+s.ex.prompt+'</p><textarea id="ex-'+s.id+'" spellcheck="false" placeholder="Type your code here without scrolling up…"></textarea><p class="small" style="margin:6px 0 0">Tab indents · Shift+Tab outdents · Esc then Tab to leave the box</p><div class="row"><button class="btn ghost" id="showAns">Show model answer</button></div><div id="ans" hidden><p class="small">Compare line by line. Anything you missed? Say it out loud, then retype it.</p>'+code(s.ex.answer)+"</div></div>"}
   if(s.quiz.length){h+='<div class="panel"><h3>Check yourself</h3><div id="quiz">'+s.quiz.map((q,i)=>'<div class="q" data-i="'+i+'"><p>'+(i+1)+". "+esc(q.q)+'</p><div class="opts">'+q.o.map((o,j)=>'<button class="opt" data-j="'+j+'">'+esc(o)+"</button>").join("")+'</div><div class="explain" hidden></div></div>').join("")+'</div><div class="row"><span class="score" id="qscore">0 / '+s.quiz.length+'</span><button class="btn ghost" id="retry">Retry</button></div></div>'}
   h+='<div class="pager">'+(idx>0?'<button class="btn ghost" data-go="'+S[idx-1].id+'">← '+S[idx-1].title+"</button>":"<span></span>")+(idx<S.length-1?'<button class="btn" data-go="'+S[idx+1].id+'">'+S[idx+1].title+" →</button>":"")+"</div>";
   lesson.innerHTML=h;
   const draftKey="pct.ex."+s.id,ta=document.getElementById("ex-"+s.id);
   if(ta){ta.value=store(draftKey)||"";ta.addEventListener("input",()=>store(draftKey,ta.value));
+    let tabOut=false;
+    ta.addEventListener("keydown",e=>{
+      if(e.key==="Escape"){tabOut=true;return}
+      if(e.key!=="Tab"||tabOut||e.ctrlKey||e.altKey||e.metaKey)return;
+      e.preventDefault();
+      const v=ta.value,a=ta.selectionStart,b=ta.selectionEnd,ls=v.lastIndexOf("\n",a-1)+1;
+      if(e.shiftKey){const n=v.slice(ls,ls+2).match(/^ {0,2}/)[0].length;
+        if(n){ta.setSelectionRange(ls,ls+n);document.execCommand("delete")||ta.setRangeText("");ta.setSelectionRange(Math.max(ls,a-n),Math.max(ls,b-n))}}
+      else if(!document.execCommand("insertText",false,"  "))ta.setRangeText("  ",a,b,"end");
+      store(draftKey,ta.value)});
+    ta.addEventListener("blur",()=>{tabOut=false});
     document.getElementById("showAns").onclick=()=>{document.getElementById("ans").hidden=false}}
   if(s.quiz.length){let right=0,answered=0;
     lesson.querySelectorAll(".q").forEach(qe=>{const q=s.quiz[+qe.dataset.i];
