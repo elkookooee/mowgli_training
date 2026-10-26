@@ -32,7 +32,7 @@
   color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:17px;line-height:1.55}
-.wrap{max-width:1120px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 60px}
+.wrap{max-width:1440px;margin:0 auto;padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px));padding-block:20px 60px}
 header.top{display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:12px 24px;padding-block:8px 16px}
 h1{font-family:var(--f-display);font-weight:700;font-size:clamp(28px,4vw,40px);line-height:1.1;margin:0;text-wrap:balance}
 .sub{color:var(--muted);margin:4px 0 0;max-width:60ch}
@@ -52,11 +52,11 @@ nav.rail button[aria-current="true"]{background:var(--accent-soft);color:var(--i
 .pill{font:600 11px var(--f-mono);padding:2px 7px;border-radius:999px;background:var(--line);color:var(--muted);white-space:nowrap}
 .pill.pass{background:var(--good-soft);color:var(--good)}
 .pill.part{background:var(--warn-soft);color:var(--warn)}
-article{min-width:0;max-width:72ch}
+article{min-width:0}
 .eyebrow{font:600 12px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
 article h2{font-family:var(--f-display);font-size:30px;line-height:1.15;margin:4px 0 12px;text-wrap:balance}
 article h3{font-family:var(--f-display);font-size:20px;margin:28px 0 8px}
-article p,article li{max-width:68ch}
+article p,article li{max-width:90ch}
 article ul{padding-left:20px;display:grid;gap:4px}
 code{font-family:var(--f-mono);font-size:.86em;background:var(--accent-soft);padding:1px 5px;border-radius:4px}
 pre{background:var(--code-bg);color:var(--code-fg);font:14px/1.6 var(--f-mono);padding:16px 18px;border-radius:10px;overflow-x:auto;margin:12px 0}
@@ -96,7 +96,7 @@ textarea{width:100%;min-height:150px;font:14px/1.5 var(--f-mono);background:var(
 .howto span{font-size:15px;color:var(--muted)}
 
 /* Flashcards */
-.deck{max-width:680px;margin:0 auto;display:grid;gap:16px}
+.deck{max-width:880px;margin:0 auto;display:grid;gap:16px}
 .deckbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
 select{font:inherit;font-size:15px;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
 .boxes{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
