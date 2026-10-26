@@ -596,18 +596,113 @@ quiz:[
 {q:"Which stop keeps working if someone adds a routine level in the middle of the chain?",o:["END(3)","END(Name)","EXIT"],a:1,e:"A name doesn't change when levels are added. A count does."}]},
 
 {id:"loops",title:"4. Loops and dot notation",body:`
-<h3>Loops</h3>
+<h3>What a loop is</h3>
+<p>A loop runs the same block of code <b>more than once</b>. You write the check one time, and the loop repeats it for every item in a list.</p>
+<p>Why you need it: a user can be in 1 group or 50. Without a loop you'd have to write one IF per position and guess how many there are:</p>
 ${code(`
+// Without a loop: breaks if the user has more (or fewer) than 3 groups
+IF MWG.UserGroups.Get(0) == "Contractors" THEN { MWG.Block("Contractor") }
+IF MWG.UserGroups.Get(1) == "Contractors" THEN { MWG.Block("Contractor") }
+IF MWG.UserGroups.Get(2) == "Contractors" THEN { MWG.Block("Contractor") }
+
+// With a loop: works for any number of groups
+STRING g
+FOR g IN MWG.UserGroups DO {
+  IF g == "Contractors" THEN { MWG.Block("Contractor") }
+}`)}
+
+<h3>Two kinds of loop</h3>
+${code(`
+// 1. LOOP n: repeat a fixed number of times
 LOOP 3 {
   // runs 3 times
 }
 
+// 2. FOR item IN list DO: run once per item in a list
 VECTOR<STRING> groups = MWG.UserGroups
 STRING g                       // declare the iterator FIRST
 FOR g IN groups DO {
-  IF g == "Finance" THEN { BREAK }
+  // g holds one group at a time
 }`)}
-<p><code>BREAK</code> leaves the loop. <code>CONTINUE</code> skips to the next item. The iterator must be declared before the <code>FOR</code>.</p>
+<p>You'll use <code>FOR</code> far more often. <code>LOOP</code> is for "do this N times" when there's no list.</p>
+
+<h3>What "the next item" means</h3>
+<p>Each trip through the braces is one <b>pass</b> (also called an iteration). At the start of every pass, the iterator variable is filled with the <b>next item</b> in the list, in order, starting at index 0. When there is no next item, the loop ends and the code after the closing brace runs.</p>
+${code(`
+VECTOR<STRING> exts = "exe", "msi", "dmg"
+STRING ext
+FOR ext IN exts DO {
+  // pass 1: ext is "exe"
+  // pass 2: ext is "msi"   (the next item)
+  // pass 3: ext is "dmg"   (the next item)
+}
+// no next item left, so we land here`)}
+
+<h3>BREAK and CONTINUE, step by step</h3>
+<p><code>CONTINUE</code> means "I'm done with this item, give me the next one." <code>BREAK</code> means "I'm done with the whole list."</p>
+${code(`
+VECTOR<STRING> groups = "Staff", "Guests", "Finance", "IT"
+STRING g
+FOR g IN groups DO {
+  IF g == "Guests" THEN { CONTINUE }   // skip to the next item
+  IF g == "Finance" THEN { BREAK }     // leave the loop now
+  // per-group work here
+}
+// after BREAK, the routine carries on from here`)}
+<div class="tbl"><table>
+<tr><th>Pass</th><th>g is</th><th>What happens</th></tr>
+<tr><td>1</td><td><code>"Staff"</code></td><td>Neither IF matches. The per-group work runs.</td></tr>
+<tr><td>2</td><td><code>"Guests"</code></td><td><code>CONTINUE</code>: the rest of this pass is skipped. Jump to the next item.</td></tr>
+<tr><td>3</td><td><code>"Finance"</code></td><td><code>BREAK</code>: the loop ends immediately.</td></tr>
+<tr><td>–</td><td><code>"IT"</code></td><td>Never visited.</td></tr>
+</table></div>
+<div class="note"><b>BREAK vs END:</b> <code>BREAK</code> leaves only the loop; the routine keeps going after the closing brace. <code>END</code> leaves the whole routine.</div>
+
+<h3>Example: find it, then act once</h3>
+<p>A clean pattern: the loop only <b>looks</b>, and sets a flag. The decision happens once, after the loop.</p>
+${code(`
+BOOLEAN isContractor = FALSE
+STRING g
+FOR g IN MWG.UserGroups DO {
+  IF g == "Contractors" THEN {
+    isContractor = TRUE
+    BREAK                  // found it, no need to check the rest
+  }
+}
+IF isContractor THEN {
+  MWG.Block("Contractors can't use this site")
+}`)}
+
+<h3>Example: check the URL against a list of words</h3>
+${code(`
+VECTOR<STRING> words = "/upload", "/share", "/sync"
+STRING w
+FOR w IN words DO {
+  IF FindCaseInsensitive(MWG.Url.Path, w) != -1 THEN {
+    MWG.SetApplicationActivity("Upload")
+    BREAK                  // one match is enough
+  }
+}`)}
+
+<h3>Example: skip items you don't care about</h3>
+${code(`
+NUMBER adminGroups = 0
+STRING g
+FOR g IN MWG.UserGroups DO {
+  IF NOT StartsWith(g, "Admin_") THEN { CONTINUE }   // not an admin group, next item
+  adminGroups = adminGroups + 1
+}
+// adminGroups now holds how many groups start with "Admin_"`)}
+
+<h3>Example: LOOP with a counter</h3>
+${code(`
+NUMBER i = 0
+LOOP 3 {
+  // pass 1: i is 0, pass 2: i is 1, pass 3: i is 2
+  i = i + 1
+}
+// i is now 3`)}
+
 <h3>Dot notation (the big one)</h3>
 <p>Two rules explain most of the code you'll read:</p>
 <ul>
@@ -618,7 +713,16 @@ ${code(`
 // These two lines are identical:
 STRING xff = MWG.Request.Headers.Get("X-Forwarded-For")
 STRING xff = MWG.Get(MWG.Headers(MWG.Request()), "X-Forwarded-For")`)}
-<p>Read a dot chain left to right like a sentence: "the request's headers, get X-Forwarded-For".</p>`,
+<p>Read a dot chain left to right like a sentence: "the request's headers, get X-Forwarded-For".</p>
+<div class="tbl"><table>
+<tr><th>Dot form</th><th>Same as</th><th>Read it as</th></tr>
+<tr><td><code>MWG.Url.Host</code></td><td><code>MWG.Host(MWG.Url())</code></td><td>the URL's host</td></tr>
+<tr><td><code>MWG.Url.Path</code></td><td><code>MWG.Path(MWG.Url())</code></td><td>the URL's path</td></tr>
+<tr><td><code>exts.Size</code></td><td><code>Size(exts)</code></td><td>how many items in exts</td></tr>
+<tr><td><code>exts.Get(0)</code></td><td><code>Get(exts, 0)</code></td><td>from exts, get item 0</td></tr>
+<tr><td><code>limitMB.HasKey("box.com")</code></td><td><code>HasKey(limitMB, "box.com")</code></td><td>does limitMB have the key box.com?</td></tr>
+</table></div>
+<p>You'll see both styles mixed in the same routine. They do exactly the same thing, so pick whichever reads better.</p>`,
 ex:{prompt:"Loop over MWG.UserGroups and block with reason \"Contractor\" if any group equals \"Contractors\".",answer:`
 STRING grp
 FOR grp IN MWG.UserGroups DO {
@@ -629,7 +733,11 @@ FOR grp IN MWG.UserGroups DO {
 quiz:[
 {q:"MWG.Url.Host is the same as…",o:["MWG.Host(MWG.Url())","Host.MWG.Url","MWG.Url(Host)","MWG.Host.Url"],a:0,e:"Object before the dot becomes the first argument, and () can be dropped."},
 {q:"What must happen before FOR item IN list DO?",o:["Nothing","Declare item with its type","Call LOOP","Sort the list"],a:1,e:"The iterator must be declared first."},
-{q:"Which keyword skips to the next loop item?",o:["NEXT","SKIP","CONTINUE","END"],a:2,e:"CONTINUE."}]},
+{q:"Which keyword skips to the next loop item?",o:["NEXT","SKIP","CONTINUE","END"],a:2,e:"CONTINUE."},
+{q:"exts = \"exe\", \"msi\", \"dmg\". On the second pass of FOR e IN exts DO, e is…",o:["\"exe\"","\"msi\"","\"dmg\"","1"],a:1,e:"Pass 1 gets index 0, pass 2 gets the next item, index 1."},
+{q:"A loop over 4 items hits CONTINUE on pass 2. What happens?",o:["The loop ends","Pass 3 starts with the next item","The routine ends","Pass 2 runs again"],a:1,e:"CONTINUE skips the rest of this pass and moves to the next item."},
+{q:"BREAK runs inside a loop. What runs next?",o:["The next item","The code after the loop's closing brace","The parent routine","Nothing"],a:1,e:"BREAK leaves the loop only. The routine carries on after it."},
+{q:"exts.Get(0) is the same as…",o:["Get(exts, 0)","Get(0, exts)","exts(0)","0.Get(exts)"],a:0,e:"The thing before the dot becomes the first argument."}]},
 
 {id:"triggers",title:"5. Triggers: when your code runs",body:`
 <p>A trigger is the moment the proxy runs your policy. There are three.</p>
@@ -646,11 +754,79 @@ quiz:[
 <li><b>The real HTTP command</b> (GET, POST…): full URL, headers, method and body.</li>
 </ul>
 <div class="note"><b>Common bug:</b> checking a URL path or header and finding it empty. You're probably in the CONNECT pass. Skip it with <code>IF MWG.CommandName == "CONNECT" THEN { END }</code>.</div>
+<h3>One download, many triggers</h3>
+<p>A user downloads <code>https://files.example.com/report.zip</code> with SSL inspection on. The zip holds <code>setup.exe</code> and <code>notes.pdf</code>. Your policy runs six times:</p>
+<div class="tbl"><table>
+<tr><th>#</th><th>Trigger</th><th>What it's looking at</th><th>What you can read</th></tr>
+<tr><td>1</td><td>Web.Request</td><td>CONNECT pass</td><td>Host only</td></tr>
+<tr><td>2</td><td>Web.Request</td><td>CERTVERIFY pass</td><td>Host and server certificate</td></tr>
+<tr><td>3</td><td>Web.Request</td><td><code>GET /report.zip</code></td><td>Full URL, request headers</td></tr>
+<tr><td>4</td><td>Web.Response</td><td>The server's reply</td><td>Status code, response headers, the zip body</td></tr>
+<tr><td>5</td><td>EmbeddedObject</td><td><code>setup.exe</code> inside the zip</td><td>That file. <code>InitialTrigger</code> is Web.Response.</td></tr>
+<tr><td>6</td><td>EmbeddedObject</td><td><code>notes.pdf</code> inside the zip</td><td>That file. <code>InitialTrigger</code> is Web.Response.</td></tr>
+</table></div>
+<p>So a routine <code>ON (Web.Request)</code> runs three times for that one download, and only the third pass has the path.</p>
+
+<h3>What you can read, and when</h3>
+<div class="tbl"><table>
+<tr><th>Data</th><th>CONNECT</th><th>GET / POST</th><th>Web.Response</th></tr>
+<tr><td>Host name</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+<tr><td>URL path and parameters</td><td>No</td><td>Yes</td><td>Yes</td></tr>
+<tr><td>Request headers</td><td>No</td><td>Yes</td><td>Yes</td></tr>
+<tr><td>Upload body (POST)</td><td>No</td><td>Yes</td><td>–</td></tr>
+<tr><td>Status code, response headers</td><td>No</td><td>No</td><td>Yes</td></tr>
+<tr><td>Download body</td><td>No</td><td>No</td><td>Yes</td></tr>
+</table></div>
+
 <h3>Scoping idiom</h3>
 ${code(`
 IF Trigger == "Web.Response" OR (Trigger == "EmbeddedObject" AND InitialTrigger == "Web.Response") THEN {
   // download-side checks, including files inside archives
-}`)}`,
+}`)}
+<p>The upload side mirrors it. A multipart upload's parts arrive as EmbeddedObject with <code>InitialTrigger</code> set to Web.Request:</p>
+${code(`
+IF Trigger == "Web.Request" OR (Trigger == "EmbeddedObject" AND InitialTrigger == "Web.Request") THEN {
+  // upload-side checks, including each part of a multipart upload
+}`)}
+
+<h3>Example: one routine, two triggers</h3>
+<p>A routine can list more than one trigger and branch on <code>Trigger</code> to do different work in each.</p>
+${code(`
+ROUTINE Size_Limits ON (Web.Request, Web.Response) {
+  IF MWG.CommandName == "CONNECT" THEN { END }   // nothing to measure yet
+
+  IF Trigger == "Web.Request" AND MWG.IsUpload THEN {
+    IF MWG.BodySize > 52428800 THEN {
+      MWG.Block("Upload over 50 MB")
+    }
+  }
+
+  IF Trigger == "Web.Response" THEN {
+    IF MWG.BodySize > 104857600 THEN {
+      MWG.Block("Download over 100 MB")
+    }
+  }
+}`)}
+
+<h3>Example: the CONNECT bug, before and after</h3>
+${code(`
+// Before: works on the GET pass, but on CONNECT the path is empty,
+// so this check silently does nothing on that pass.
+ROUTINE Admin_Block ON (Web.Request) {
+  IF FindCaseInsensitive(MWG.Url.Path, "/admin") != -1 THEN {
+    MWG.Block("Admin pages blocked")
+  }
+}
+
+// After: skip the passes that can't see the path. Clear intent,
+// and no wasted work on passes 1 and 2.
+ROUTINE Admin_Block ON (Web.Request) {
+  IF MWG.CommandName == "CONNECT" OR MWG.CommandName == "CERTVERIFY" THEN { END }
+  IF FindCaseInsensitive(MWG.Url.Path, "/admin") != -1 THEN {
+    MWG.Block("Admin pages blocked")
+  }
+}`)}
+<p>The opposite case matters too: if you want to block a whole <b>host</b>, the CONNECT pass is the earliest and cheapest place to do it, because the host is already known.</p>`,
 ex:{prompt:"Write the first lines of a Web.Request routine that skips the CONNECT and CERTVERIFY passes.",answer:`
 ROUTINE Path_Check ON (Web.Request) {
   IF MWG.CommandName == "CONNECT" OR MWG.CommandName == "CERTVERIFY" THEN {
@@ -662,7 +838,10 @@ quiz:[
 {q:"Which trigger do you use to scan a download for malware?",o:["Web.Request","Web.Response","CONNECT"],a:1,e:"The body arrives on the response."},
 {q:"During the CONNECT pass you can read…",o:["The full URL path","Request headers","Only the host name","The POST body"],a:2,e:"Only the FQDN (from CONNECT or SNI)."},
 {q:"A ZIP download contains 3 files. Which trigger fires for each file?",o:["Web.Response 3 times","EmbeddedObject","Web.Request"],a:1,e:"EmbeddedObject fires per extracted member."},
-{q:"How do you know an EmbeddedObject came from a response?",o:["Trigger == \"Web.Response\"","InitialTrigger == \"Web.Response\"","MWG.CommandName"],a:1,e:"InitialTrigger names the parent."}]},
+{q:"How do you know an EmbeddedObject came from a response?",o:["Trigger == \"Web.Response\"","InitialTrigger == \"Web.Response\"","MWG.CommandName"],a:1,e:"InitialTrigger names the parent."},
+{q:"With SSL inspection on, how many times does a Web.Request routine run for one HTTPS GET?",o:["1","2","3"],a:2,e:"CONNECT, CERTVERIFY, then the real GET."},
+{q:"Where can you read the HTTP status code?",o:["CONNECT","The GET pass of Web.Request","Web.Response"],a:2,e:"The status comes from the server's reply."},
+{q:"A user uploads a form with 2 attached files. Which check catches each file?",o:["Trigger == \"Web.Response\"","Trigger == \"EmbeddedObject\" AND InitialTrigger == \"Web.Request\"","MWG.CommandName == \"POST\" only"],a:1,e:"Each multipart part is an EmbeddedObject whose parent is the request."}]},
 
 {id:"urls",title:"6. URLs, lists and strings",body:`
 <h3>Pieces of the URL</h3>
@@ -672,6 +851,32 @@ STRING host  = MWG.Url.Host
 STRING path  = MWG.Url.Path
 STRING q     = MWG.Url.Parameter("q")      // one query parameter
 BOOLEAN hasQ = MWG.Url.HasParameter("q")`)}
+<p>For this URL: <code>https://www.dropbox.com/upload/files?q=report&amp;lang=en</code></p>
+<div class="tbl"><table>
+<tr><th>Code</th><th>Gives you</th></tr>
+<tr><td><code>MWG.Url.ToString</code></td><td><code>"https://www.dropbox.com/upload/files?q=report&amp;lang=en"</code></td></tr>
+<tr><td><code>MWG.Url.Host</code></td><td><code>"www.dropbox.com"</code></td></tr>
+<tr><td><code>MWG.Url.Path</code></td><td><code>"/upload/files"</code></td></tr>
+<tr><td><code>MWG.Url.Parameter("q")</code></td><td><code>"report"</code></td></tr>
+<tr><td><code>MWG.Url.HasParameter("lang")</code></td><td><code>TRUE</code></td></tr>
+<tr><td><code>MWG.Url.HasParameter("page")</code></td><td><code>FALSE</code></td></tr>
+</table></div>
+
+<h3>Matching a host: the trap</h3>
+<p>Hosts are where most matching bugs come from. Compare three ways of checking for Dropbox:</p>
+${code(`
+STRING h = MWG.Url.Host
+
+// Too narrow: misses www.dropbox.com
+IF h == "dropbox.com" THEN { ... }
+
+// Too wide: also matches evildropbox.com
+IF EndsWithCaseInsensitive(h, "dropbox.com") THEN { ... }
+
+// Right: the exact domain, or any subdomain of it
+IF h == "dropbox.com" OR EndsWithCaseInsensitive(h, ".dropbox.com") THEN { ... }`)}
+<p>The leading dot in <code>".dropbox.com"</code> is what stops <code>evildropbox.com</code> from matching.</p>
+
 <h3>Lists from the console</h3>
 <p>Smart Match lists you build in the UI are referenced with the <code>list_</code> prefix.</p>
 ${code(`
@@ -686,6 +891,53 @@ IF EndsWithCaseInsensitive(MWG.Url.Host, ".sharepoint.com") THEN { ... }
 STRING clean = RegExJSi.ReplaceAllMatches(ToRegExJSi("\\\\s+"), host, "")
 IF RegExJSi.Matches(ToRegExJSi("^login\\\\."), host) THEN { ... }`)}
 <p>Also handy: <code>StartsWith</code>, <code>ToLower</code>, <code>Split(str, ",")</code>, <code>Length</code>, <code>ReplaceAll(str, find, repl)</code>.</p>
+<p>What each one gives back when the host is <code>"Login.Contoso.com"</code>:</p>
+<div class="tbl"><table>
+<tr><th>Code</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>FindCaseInsensitive(h, "contoso")</code></td><td><code>6</code></td><td>"Contoso" starts at position 6 (counting from 0)</td></tr>
+<tr><td><code>FindCaseInsensitive(h, "fabrikam")</code></td><td><code>-1</code></td><td>Not found</td></tr>
+<tr><td><code>FindCaseInsensitive(h, "login")</code></td><td><code>0</code></td><td>Found at the very start. 0 is a match, not "no"</td></tr>
+<tr><td><code>EndsWithCaseInsensitive(h, ".contoso.com")</code></td><td><code>TRUE</code></td><td>Case is ignored</td></tr>
+<tr><td><code>StartsWith(h, "login")</code></td><td><code>FALSE</code></td><td>Case matters: "Login" is not "login"</td></tr>
+<tr><td><code>ToLower(h)</code></td><td><code>"login.contoso.com"</code></td><td>Lowercase copy</td></tr>
+<tr><td><code>Length(h)</code></td><td><code>17</code></td><td>Number of characters</td></tr>
+</table></div>
+<div class="note"><b>Why <code>!= -1</code>:</b> a match at the very start returns <code>0</code>. If you test <code>&gt; 0</code> you miss it. Always compare with <code>!= -1</code> for "found".</div>
+
+<h3>Example: block file types from a comma list</h3>
+${code(`
+VECTOR<STRING> exts = Split("exe,msi,dmg", ",")
+STRING e
+FOR e IN exts DO {
+  IF EndsWithCaseInsensitive(MWG.Url.Path, "." + e) THEN {
+    MWG.Block("Blocked file type: " + e)
+    BREAK
+  }
+}`)}
+
+<h3>Example: check a search term in the query string</h3>
+${code(`
+STRING term = ""
+IF MWG.Url.Host == "www.google.com" AND MWG.Url.HasParameter("q") THEN {
+  term = ToLower(MWG.Url.Parameter("q"))
+  IF FindCaseInsensitive(term, "torrent") != -1 THEN {
+    MWG.Block("Search term not allowed")
+  }
+}`)}
+<p>Check <code>HasParameter</code> first, so you never work with a parameter that isn't there.</p>
+
+<h3>Example: a Smart Match list with an exception</h3>
+${code(`
+ROUTINE Social_Media ON (Web.Request) {
+  IF MWG.CommandName == "CONNECT" THEN { END }
+  IF MWG.SmartMatch(MWG.Url, list_Social_Allowed_Pages) THEN {
+    END                                   // allowed pages: leave this routine
+  }
+  IF MWG.SmartMatch(MWG.Url, list_Social_Media) THEN {
+    MWG.Block("Social media is blocked")
+  }
+}`)}
+<p>Put the exception check first. Once the block runs, it's too late to make an exception.</p>
 <h3>Reputation and category</h3>
 <p><code>MWG.UrlHasHighRisk</code>, <code>MWG.UrlCategories(setting)</code>, <code>MWG.ApplicationRisk</code> and <code>MWG.ApplicationHasHighRisk</code> describe the <b>current request</b> only. There's no lookup of an app by name.</p>`,
 ex:{prompt:"Block when the host ends with \"dropbox.com\" (any case) and the URL contains \"/upload\".",answer:`
@@ -696,7 +948,11 @@ IF EndsWithCaseInsensitive(MWG.Url.Host, "dropbox.com")
 quiz:[
 {q:"FindCaseInsensitive returns what when there's no match?",o:["FALSE","0","-1","\"\""],a:2,e:"-1 means no match."},
 {q:"How do you reference a Smart Match list named HTTP_Only_Sites?",o:["\"HTTP_Only_Sites\"","list_HTTP_Only_Sites","@HTTP_Only_Sites","List.HTTP_Only_Sites"],a:1,e:"Console lists use the list_ prefix in code."},
-{q:"How do you get the URL as a plain string?",o:["MWG.Url.ToString","MWG.Url.Text","String(MWG.Url)"],a:0,e:"MWG.Url.ToString (same as MWG.ToString(MWG.Url()))."}]},
+{q:"How do you get the URL as a plain string?",o:["MWG.Url.ToString","MWG.Url.Text","String(MWG.Url)"],a:0,e:"MWG.Url.ToString (same as MWG.ToString(MWG.Url()))."},
+{q:"The host is www.dropbox.com. Is MWG.Url.Host == \"dropbox.com\" true?",o:["Yes","No"],a:1,e:"== needs an exact match. Add OR EndsWithCaseInsensitive(h, \".dropbox.com\")."},
+{q:"Why use \".dropbox.com\" (with the dot) in EndsWith?",o:["Required syntax","So evildropbox.com doesn't match","To match http and https"],a:1,e:"The dot forces a real subdomain boundary."},
+{q:"FindCaseInsensitive(\"login.site.com\", \"login\") returns…",o:["-1","0","1","TRUE"],a:1,e:"Found at position 0. That's why you test != -1, not > 0."},
+{q:"For https://a.com/files?id=7, MWG.Url.Path is…",o:["\"/files?id=7\"","\"/files\"","\"a.com/files\"","\"id=7\""],a:1,e:"The path stops before the ?. Use Parameter(\"id\") for the rest."}]},
 
 {id:"actions",title:"7. Actions: block, redirect, headers",body:`
 <h3>Stop or change the request</h3>
@@ -706,6 +962,33 @@ MWG.Redirect("https://intranet/policy", "Policy redirect", "Rule", "RuleSet")
 MWG.SetHTTPStatusCode(403)
 MWG.GenerateResponse("{\\"status\\":\\"denied\\"}")  // your own reply`)}
 <div class="note"><b>Gotcha:</b> <code>MWG.GenerateResponse</code> always sends 200 unless you call <code>MWG.SetHTTPStatusCode</code> first. The number in the 2-argument version is ignored.</div>
+<h3>Which one to use</h3>
+<div class="tbl"><table>
+<tr><th>Action</th><th>The user sees</th><th>Use it when</th></tr>
+<tr><td><code>MWG.Block("why")</code></td><td>The standard block page, with your reason</td><td>A person in a browser hit something they shouldn't. The most common choice.</td></tr>
+<tr><td><code>MWG.Redirect(url, …)</code></td><td>A different page, like your policy page or an approved alternative</td><td>You want to steer people somewhere useful instead of a dead end.</td></tr>
+<tr><td><code>MWG.SetHTTPStatusCode</code> + <code>MWG.GenerateResponse</code></td><td>Exactly the text you write</td><td>The client is an app or API, not a person. An HTML block page means nothing to it.</td></tr>
+</table></div>
+
+<h3>Example: send personal webmail to the policy page</h3>
+${code(`
+ROUTINE Webmail_Redirect ON (Web.Request) {
+  IF MWG.CommandName == "CONNECT" THEN { END }
+  IF MWG.SmartMatch(MWG.Url, list_Personal_Webmail) THEN {
+    MWG.Redirect("https://intranet/acceptable-use", "Personal webmail", "Webmail_Redirect", "Web Policy")
+  }
+}`)}
+
+<h3>Example: a clean 403 for an API client</h3>
+${code(`
+ROUTINE API_Deny ON (Web.Request) {
+  IF MWG.Url.Host == "api.unapproved-ai.example" THEN {
+    MWG.SetHTTPStatusCode(403)                         // 1. status first
+    MWG.GenerateResponse("Blocked by company policy")  // 2. then the body
+  }
+}`)}
+<p>Swap the two lines and the client gets a 200 with "Blocked by company policy" as the body. Many apps would treat that as success.</p>
+
 <h3>Headers</h3>
 ${code(`
 // read
@@ -715,10 +998,43 @@ IF MWG.Request.Headers.HasHeader("X-Test") THEN { ... }
 // add / remove (procedures)
 MWG.Add(MWG.Headers(MWG.Request), "Restrict-Access-To-Tenants", "contoso.com")
 MWG.Remove(MWG.Headers(MWG.Request), "X-Debug")`)}
+
+<h3>Example: block old clients by User-Agent</h3>
+${code(`
+STRING ua = ""
+IF MWG.Request.Headers.HasHeader("User-Agent") THEN {
+  ua = MWG.Request.Headers.Get("User-Agent")
+}
+IF FindCaseInsensitive(ua, "MSIE ") != -1 THEN {
+  MWG.Block("Internet Explorer is not supported")
+}`)}
+<p>Check <code>HasHeader</code> before <code>Get</code>. Some clients don't send the header at all.</p>
+
+<h3>Example: Google Workspace tenant restriction</h3>
+<p>The same idea as the Microsoft header in the exercise below: add a header that tells Google which company domains are allowed to sign in.</p>
+${code(`
+ROUTINE Google_Tenant ON (Web.Request) {
+  IF MWG.CommandName == "CONNECT" THEN { END }
+  IF EndsWithCaseInsensitive(MWG.Url.Host, ".google.com") THEN {
+    MWG.Add(MWG.Headers(MWG.Request), "X-GoogApps-Allowed-Domains", "contoso.com")
+  }
+}`)}
+<p>This only works on the GET/POST pass. On CONNECT there are no headers to add to, which is why the routine skips it.</p>
+
 <h3>Tag activity for reporting</h3>
 ${code(`
 IF FindCaseInsensitive(MWG.Url.Path, "/logout") != -1 THEN {
   MWG.SetApplicationActivity("Logout")
+}`)}
+<p>With several activities, use <code>ELSE IF</code> so each request gets exactly one label:</p>
+${code(`
+STRING p = MWG.Url.Path
+IF FindCaseInsensitive(p, "/login") != -1 THEN {
+  MWG.SetApplicationActivity("Login")
+} ELSE IF FindCaseInsensitive(p, "/logout") != -1 THEN {
+  MWG.SetApplicationActivity("Logout")
+} ELSE IF MWG.IsUpload THEN {
+  MWG.SetApplicationActivity("Upload")
 }`)}
 <h3>Change the URL</h3>
 <p><code>MWG.SetHost(MWG.Url, "new.host")</code>, <code>MWG.SetParameter(MWG.Url, "key", "val")</code>. These change the real request, not a copy.</p>`,
@@ -731,7 +1047,10 @@ ROUTINE Tenant_Restriction ON (Web.Request) {
 quiz:[
 {q:"You call MWG.GenerateResponse(\"denied\") with no other setup. Status code?",o:["403","200","500"],a:1,e:"Always 200 unless you SetHTTPStatusCode first."},
 {q:"Which is a procedure?",o:["MWG.Request.Headers.Get","MWG.Add(MWG.Headers(MWG.Request), \"X\", \"1\")","MWG.Url.Host"],a:1,e:"Add changes something and returns nothing."},
-{q:"Which procedure labels the activity in reports?",o:["MWG.SetApplicationActivity","MWG.SetLabel","MWG.Tag"],a:0,e:"MWG.SetApplicationActivity(\"Login\")."}]},
+{q:"Which procedure labels the activity in reports?",o:["MWG.SetApplicationActivity","MWG.SetLabel","MWG.Tag"],a:0,e:"MWG.SetApplicationActivity(\"Login\")."},
+{q:"A desktop app calls an API you want to deny. Best choice?",o:["MWG.Block (HTML block page)","SetHTTPStatusCode(403) then GenerateResponse","MWG.Redirect to the policy page"],a:1,e:"An app can't show a block page. A real 403 tells it the call failed."},
+{q:"You want to steer users from personal webmail to the acceptable-use page. Use…",o:["MWG.Block","MWG.Redirect","MWG.Remove"],a:1,e:"Redirect sends them somewhere useful instead of a dead end."},
+{q:"Why does a header-adding routine skip the CONNECT pass?",o:["CONNECT is too slow","There are no request headers to change on CONNECT","Headers can only be added on Web.Response"],a:1,e:"CONNECT only knows the host. Headers come with the real GET/POST."}]},
 
 {id:"dlp",title:"8. DLP and RBI",body:`
 <h3>DLP flow (classifier → routine → match → incident)</h3>
@@ -744,6 +1063,45 @@ quiz:[
 </ul>
 <p>Quick yes/no without incidents: <code>MWG.DLPClassificationMatches(setting)</code>. Severities: <code>DLP.SeverityInfo / Warning / Minor / Major / Critical</code>.</p>
 <div class="note"><b>Naming trap:</b> the name you see in the console can differ from the name the code expects. Copy the reference from a working routine.</div>
+
+<h3>The four steps as a story</h3>
+<p>A user uploads <code>payroll.xlsx</code> containing 40 card numbers to a file-sharing site.</p>
+<div class="tbl"><table>
+<tr><th>Step</th><th>Call</th><th>In plain words</th></tr>
+<tr><td>1</td><td><code>MWG.GetDLPClassifier()</code></td><td>"Get me the tool that knows how to spot sensitive data."</td></tr>
+<tr><td>2</td><td><code>DLP.StartRoutine(classifier, "Uploads")</code></td><td>"Open a fresh notepad to write down what we find." This is the collector.</td></tr>
+<tr><td>3</td><td><code>DLP.Match(…)</code> then <code>DLP.Add(collector, DLP.SeverityMajor)</code></td><td>"Does the file contain card numbers? Yes, so write it down as Major."</td></tr>
+<tr><td>4</td><td><code>DLP.CreateIncident(classifier, collector, "Card data upload")</code></td><td>"Hand the notepad in as an incident the security team will see."</td></tr>
+</table></div>
+<p>Skip step 4 and the hit is recorded nowhere: you found the data but nobody hears about it.</p>
+
+<h3>Quick check or full incident?</h3>
+<div class="tbl"><table>
+<tr><th>You want to…</th><th>Use</th></tr>
+<tr><td>Just block or allow, no record needed</td><td><code>MWG.DLPClassificationMatches(setting)</code></td></tr>
+<tr><td>Block <b>and</b> give the security team an incident to review</td><td>The four-step flow</td></tr>
+</table></div>
+${code(`
+// Quick check: block uploads that contain card data.
+// PCI_Setting is a placeholder: copy the real reference from a working routine.
+ROUTINE Card_Uploads ON (Web.Request) {
+  IF NOT MWG.IsUpload THEN { END }
+  IF MWG.DLPClassificationMatches(PCI_Setting) THEN {
+    MWG.Block("Card numbers can't be uploaded")
+  }
+}`)}
+
+<h3>Picking a severity</h3>
+<div class="tbl"><table>
+<tr><th>Severity</th><th>Typical use</th></tr>
+<tr><td><code>DLP.SeverityInfo</code></td><td>Just for the record, no one needs to look</td></tr>
+<tr><td><code>DLP.SeverityWarning</code></td><td>Might be fine, worth a glance</td></tr>
+<tr><td><code>DLP.SeverityMinor</code></td><td>A small amount of internal data</td></tr>
+<tr><td><code>DLP.SeverityMajor</code></td><td>Customer or employee personal data</td></tr>
+<tr><td><code>DLP.SeverityCritical</code></td><td>Bulk card numbers, credentials, regulated data</td></tr>
+</table></div>
+<p>Agree on these with your security team. Their dashboards and alerts usually filter by severity.</p>
+
 <h3>RBI (Remote Browser Isolation)</h3>
 <ul>
 <li>RBI decisions belong on <b>Web.Request</b>. By the response, it's too late.</li>
@@ -755,6 +1113,28 @@ ROUTINE Watermark_Docs ON (Web.Request) {
   IF RBI.IsInIsolation THEN {
     RBI.SetWatermarking(TRUE)
   }
+}`)}
+
+<h3>What "the RBI loop" actually is</h3>
+<p>When a site is isolated, the remote browser loads that site <b>for</b> the user, and that request goes through your policy again. If your routine doesn't know it's already inside isolation, this happens:</p>
+<ol>
+<li>User opens the site. Your routine says "isolate it".</li>
+<li>The isolated browser requests the site. Your routine sees it and says "isolate it" again.</li>
+<li>Step 2 repeats. The page never loads.</li>
+</ol>
+<p>Checking <code>RBI.IsInIsolation</code> is how the routine tells the two requests apart.</p>
+
+<h3>Example: read-only for risky sites, watermark everything</h3>
+${code(`
+ROUTINE RBI_Controls ON (Web.Request) {
+  IF NOT RBI.IsInIsolation THEN { END }      // only act inside isolation
+
+  RBI.SetWatermarking(TRUE)                   // every isolated page
+
+  IF MWG.SmartMatch(MWG.Url, list_RBI_Read_Only) THEN {
+    RBI.SetSiteReadOnly()                     // no typing into forms
+    RBI.SetBlockPrinting(TRUE)
+  }
 }`)}`,
 ex:{prompt:"List the four DLP steps in order with the function or procedure for each.",answer:`
 // 1  MWG.GetDLPClassifier()
@@ -764,7 +1144,10 @@ ex:{prompt:"List the four DLP steps in order with the function or procedure for 
 quiz:[
 {q:"Which trigger should RBI policy use?",o:["Web.Request","Web.Response","EmbeddedObject"],a:0,e:"RBI must be decided at request time."},
 {q:"Why check RBI.IsInIsolation?",o:["It's required syntax","To avoid re-triggering inside an isolated session (loops)","To enable watermarking"],a:1,e:"Prevents infinite loops like the tenant restriction issue."},
-{q:"Which call actually creates the DLP incident?",o:["DLP.Add","DLP.Match","DLP.CreateIncident"],a:2,e:"Add records a hit; CreateIncident raises it."}]},
+{q:"Which call actually creates the DLP incident?",o:["DLP.Add","DLP.Match","DLP.CreateIncident"],a:2,e:"Add records a hit; CreateIncident raises it."},
+{q:"You only need to block card data, with no incident record. Use…",o:["The four-step flow","MWG.DLPClassificationMatches(setting)","DLP.Add alone"],a:1,e:"The quick check returns yes/no without creating an incident."},
+{q:"You run steps 1–3 but forget DLP.CreateIncident. What happens?",o:["The incident is created anyway","The hit is recorded but nobody sees an incident","The upload is blocked"],a:1,e:"Nothing is raised to the security team without CreateIncident."},
+{q:"Why does an isolated page sometimes never load?",o:["Watermarking is slow","The isolated browser's request is sent to isolation again, forever","RBI only works on Web.Response"],a:1,e:"Check RBI.IsInIsolation so the second request is handled differently."}]},
 
 {id:"gotchas",title:"9. Gotchas from your tenant",body:`
 <p>These came from real debugging. When the docs and a working routine disagree, trust the working routine.</p>
@@ -779,13 +1162,77 @@ quiz:[
 <li>Single-page apps like Copilot with strict content security policy resist injected HTML. The native error is often the practical result.</li>
 <li>When code gets unreliable, the GUI rule builder is a fine fallback.</li>
 </ul>
+<h3>Wrong vs right</h3>
+<p>Each pair below is a real mistake and its fix.</p>
+${code(`
+// Quotes: single quotes are invalid
+IF MWG.Url.Host == 'box.com' THEN { ... }          // wrong
+IF MWG.Url.Host == "box.com" THEN { ... }          // right
+
+// Keywords must be uppercase, and THEN is required
+if MWG.IsUpload { ... }                             // wrong
+IF MWG.IsUpload THEN { ... }                        // right
+
+// Find returns 0 for a match at the start
+IF FindCaseInsensitive(p, "/upload") > 0 THEN       // wrong: misses "/upload/..."
+IF FindCaseInsensitive(p, "/upload") != -1 THEN     // right
+
+// URL as text
+STRING u = MWG.Raw(MWG.Url())                       // wrong in your tenant
+STRING u = MWG.Url.ToString                         // right
+
+// Host matching
+IF EndsWithCaseInsensitive(h, "box.com") THEN       // wrong: matches dropbox.com!
+IF h == "box.com" OR EndsWithCaseInsensitive(h, ".box.com") THEN   // right
+
+// Re-declaring a variable
+NUMBER limit = 50
+NUMBER limit = 100                                  // wrong: type repeated
+limit = 100                                         // right
+
+// Iterator not declared
+FOR g IN MWG.UserGroups DO { ... }                  // wrong
+STRING g
+FOR g IN MWG.UserGroups DO { ... }                  // right`)}
+
 <h3>Debug routine</h3>
 <ul>
 <li>Read the error line number and the exact function name it names.</li>
 <li>Look for single quotes, lowercase keywords, missing <code>THEN</code>.</li>
 <li>Check you're not in the CONNECT pass.</li>
 <li>Check the trigger: is the data you want even available yet?</li>
-</ul>`,
+</ul>
+
+<h3>Worked example: "my block never fires"</h3>
+<p>The routine is meant to block uploads to box.com, but uploads go through.</p>
+${code(`
+ROUTINE Box_Uploads ON (Web.Response) {
+  IF MWG.Url.Host == "box.com" AND MWG.IsUpload THEN {
+    MWG.Block("No uploads to Box")
+  }
+}`)}
+<ol>
+<li><b>Trigger:</b> it's on Web.Response. By then the upload has already been sent. Move it to <b>Web.Request</b>.</li>
+<li><b>Host:</b> real uploads go to <code>upload.box.com</code> or <code>app.box.com</code>, which never equal <code>"box.com"</code>. Use the exact-or-subdomain pattern.</li>
+<li><b>CONNECT:</b> on the CONNECT pass there's no body yet, so <code>IsUpload</code> can't be true. Skip that pass so the intent is clear.</li>
+</ol>
+${code(`
+ROUTINE Box_Uploads ON (Web.Request) {
+  IF MWG.CommandName == "CONNECT" THEN { END }
+  STRING h = MWG.Url.Host
+  IF (h == "box.com" OR EndsWithCaseInsensitive(h, ".box.com")) AND MWG.IsUpload THEN {
+    MWG.Block("No uploads to Box")
+  }
+}`)}
+
+<h3>Trick: show yourself the value</h3>
+<p>When you can't tell what a function returns, block a test site and put the value in the reason. The block page shows it to you.</p>
+${code(`
+// Temporary. Test host only. Delete when done.
+IF MWG.Url.Host == "test.example.com" THEN {
+  MWG.Block("host=" + MWG.Url.Host + " path=" + MWG.Url.Path + " cmd=" + MWG.CommandName)
+}`)}
+<div class="note"><b>Careful:</b> scope it to a host only you use, and remove it afterwards. Left in place, it blocks that host for everyone.</div>`,
 ex:{prompt:"Write a routine that redirects nothing yet, but skips CONNECT, skips isolated sessions, and checks if the URL matches list_HTTP_Only_Sites.",answer:`
 ROUTINE HTTP_Only ON (Web.Request) {
   IF MWG.CommandName == "CONNECT" THEN { END }
@@ -796,7 +1243,10 @@ ROUTINE HTTP_Only ON (Web.Request) {
 }`},
 quiz:[
 {q:"The console rejects a function that the docs list. First step?",o:["Rewrite the whole routine","Compare against a working sample in your tenant","Switch to Web.Response"],a:1,e:"Working samples are the most reliable reference."},
-{q:"Which is the confirmed way to get the URL as a string in your tenant?",o:["MWG.Raw(MWG.Url())","MWG.Url.ToString","MWG.UrlString"],a:1,e:"MWG.Url.ToString."}]}
+{q:"Which is the confirmed way to get the URL as a string in your tenant?",o:["MWG.Raw(MWG.Url())","MWG.Url.ToString","MWG.UrlString"],a:1,e:"MWG.Url.ToString."},
+{q:"EndsWithCaseInsensitive(h, \"box.com\") is true for…",o:["Only box.com","box.com and app.box.com","box.com, app.box.com AND dropbox.com"],a:2,e:"Without the leading dot it matches any host ending in those letters."},
+{q:"An upload block on Web.Response never fires. Most likely fix?",o:["Add more IFs","Move it to Web.Request","Use EXIT"],a:1,e:"The upload has already been sent by the time the response arrives."},
+{q:"Quickest way to see what MWG.Url.Path returns on a live request?",o:["Guess from the docs","Put it in a Block reason on a test host","Use MWG.Allow"],a:1,e:"The block page shows the value. Remove the test rule afterwards."}]}
 ];
 
 /* ---------- FLASHCARDS ---------- */
@@ -853,6 +1303,19 @@ const C=[
 ["flow","CALL on a routine not scoped for this trigger?","It still runs. CALL ignores the ON list."],
 ["flow","IF syntax?","IF cond THEN { } ELSE IF cond THEN { } ELSE { }"],
 ["loops","Run something 5 times?","LOOP 5 { ... }"],
+["loops","What is a loop?","Code that runs the same block once per item (FOR) or N times (LOOP)."],
+["loops","What is \"the next item\"?","At the start of each pass, the iterator is filled with the next list item, in order from index 0."],
+["loops","BREAK vs CONTINUE?","CONTINUE: done with this item, go to the next.\nBREAK: done with the whole list, leave the loop."],
+["loops","BREAK vs END?","BREAK leaves the loop; the routine carries on. END leaves the routine."],
+["loops","Find-then-act pattern?","BOOLEAN found = FALSE\nSTRING g\nFOR g IN list DO {\n  IF g == \"X\" THEN { found = TRUE\n    BREAK }\n}\nIF found THEN { ... }"],
+["triggers","Web.Request passes for one HTTPS GET with SSL inspection?","3: CONNECT, CERTVERIFY, then the real GET."],
+["triggers","Catch each part of a multipart upload?","Trigger == \"EmbeddedObject\" AND InitialTrigger == \"Web.Request\""],
+["urls","Match a domain and its subdomains safely?","h == \"box.com\" OR EndsWithCaseInsensitive(h, \".box.com\")"],
+["urls","Why != -1 and not > 0?","A match at the very start returns 0."],
+["actions","Block vs Redirect vs GenerateResponse?","Block: a person sees a block page.\nRedirect: send them somewhere useful.\nGenerateResponse (+403): app/API clients."],
+["dlp","Quick DLP yes/no without an incident?","MWG.DLPClassificationMatches(setting)"],
+["dlp","What causes the RBI loop?","The isolated browser's own request hits policy and is isolated again. Check RBI.IsInIsolation."],
+["gotchas","See a live value while debugging?","On a test host only: MWG.Block(\"path=\" + MWG.Url.Path). Remove afterwards."],
 ["loops","Loop over a list?","STRING g\nFOR g IN groups DO { ... }\n(iterator declared first)"],
 ["loops","Leave a loop early / skip an item?","BREAK / CONTINUE"],
 ["loops","Dot notation rule 1?","The object before the dot becomes the first argument. x.ToString == ToString(x)"],
